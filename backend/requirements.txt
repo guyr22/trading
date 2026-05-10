@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+sqlalchemy==2.0.36
+pydantic==2.10.3
+yfinance==1.2.0
+psycopg2-binary==2.9.10
+anthropic==0.50.0
+openai==1.78.0
+google-generativeai==0.8.5
