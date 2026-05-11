@@ -40,6 +40,34 @@ npm run dev
 - Backend API: http://localhost:8000/api
 - Frontend: http://localhost:3000
 
+## Deployment (Railway)
+
+The app runs on Railway with three services: **backend**, **frontend**, and **PostgreSQL**.
+
+- GitHub repo: https://github.com/guyr22/trading.git — Railway auto-deploys on every push to `main`
+- Each service has its own Dockerfile; `backend/railway.toml` and `frontend/railway.toml` configure Railway-specific settings
+- Secrets (API keys, DATABASE_URL) are set as environment variables in the Railway dashboard, not in code
+
+**Environment variables required:**
+
+| Service  | Variable | Value |
+|----------|----------|-------|
+| backend  | `DATABASE_URL` | injected automatically by Railway PostgreSQL add-on |
+| backend  | `ANTHROPIC_API_KEY` | from `.env` |
+| backend  | `GOOGLE_API_KEY` | from `.env` |
+| backend  | `PORT` | set to `8000` to pin it |
+| frontend | `BACKEND_URL` | `http://<backend-internal-hostname>.railway.internal:8000` |
+
+**Local → Railway data migration:**
+```bash
+docker compose exec -e DEST_DATABASE_URL=<railway-postgres-url> backend python migrate_to_railway.py
+```
+
+**Railway MCP server** (installed in Claude Code — allows Claude to manage Railway directly):
+```bash
+claude mcp add railway-mcp-server -- npx -y @railway/mcp-server
+```
+
 ## Architecture
 
 Full-stack trading portfolio tracker with separate backend and frontend servers.
