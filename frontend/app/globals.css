@@ -456,3 +456,92 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
+
+/* ── Responsive table wrapper ──────────────────────────────── */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius);
+}
+
+/* ── Mobile (≤640px) ───────────────────────────────────────── */
+@media (max-width: 640px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+  }
+
+  nav {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  nav::-webkit-scrollbar { display: none; }
+
+  .nav-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  main {
+    margin: 1rem auto;
+    padding: 0 0.75rem;
+  }
+
+  .summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .card {
+    padding: 0.85rem;
+  }
+
+  .card-value {
+    font-size: 1.15rem;
+  }
+
+  thead th {
+    padding: 0.6rem 0.65rem;
+    font-size: 0.7rem;
+  }
+
+  tbody td {
+    padding: 0.5rem 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .trade-form {
+    max-width: 100%;
+  }
+
+  .modal {
+    width: calc(100vw - 2rem);
+    padding: 1.25rem;
+  }
+
+  .btn-quick {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.72rem;
+  }
+
+  .quick-actions {
+    gap: 0.25rem;
+  }
+}
+
+/* ── Tablet (641px – 960px) ────────────────────────────────── */
+@media (min-width: 641px) and (max-width: 960px) {
+  main {
+    margin: 1.25rem auto;
+    padding: 0 1rem;
+  }
+}

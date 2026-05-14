@@ -57,53 +57,55 @@ export default function Dashboard() {
       {data.positions.filter(p => !INDEX_TICKERS.has(p.ticker)).length === 0 ? (
         <p className="empty-msg">No open positions yet. Place a trade to get started.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Qty</th>
-              <th>Avg Cost</th>
-              <th>Price</th>
-              <th>Market Value</th>
-              <th>P&L</th>
-              <th>P&L %</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.positions.filter(p => !INDEX_TICKERS.has(p.ticker)).map((p: Position) => (
-              <tr key={p.ticker}>
-                <td>
-                  <strong>{p.ticker}</strong>
-                  {p.leveraged_underlying && p.leverage_factor && (
-                    <span style={{
-                      marginLeft: "0.4rem",
-                      fontSize: "0.7rem",
-                      padding: "0.1rem 0.4rem",
-                      borderRadius: "4px",
-                      background: p.leverage_factor > 0 ? "#16a34a22" : "#dc262622",
-                      color: p.leverage_factor > 0 ? "#4ade80" : "#f87171",
-                      border: `1px solid ${p.leverage_factor > 0 ? "#16a34a55" : "#dc262655"}`,
-                      whiteSpace: "nowrap",
-                    }}>
-                      {p.leverage_factor > 0 ? "+" : ""}{p.leverage_factor}x {p.leveraged_underlying}
-                    </span>
-                  )}
-                </td>
-                <td>{p.quantity % 1 === 0 ? p.quantity : p.quantity.toFixed(2)}</td>
-                <td>{fmt(p.avg_cost)}</td>
-                <td>{fmt(p.current_price)}</td>
-                <td>{fmt(p.market_value)}</td>
-                <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
-                <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>
-                <td className="quick-actions">
-                  <button className="btn-quick btn-quick-buy" onClick={() => setModal({ action: "BUY", ticker: p.ticker, price: p.current_price })}>Buy</button>
-                  <button className="btn-quick btn-quick-sell" onClick={() => setModal({ action: "SELL", ticker: p.ticker, price: p.current_price })}>Sell</button>
-                </td>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Qty</th>
+                <th>Avg Cost</th>
+                <th>Price</th>
+                <th>Market Value</th>
+                <th>P&L</th>
+                <th>P&L %</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.positions.filter(p => !INDEX_TICKERS.has(p.ticker)).map((p: Position) => (
+                <tr key={p.ticker}>
+                  <td>
+                    <strong>{p.ticker}</strong>
+                    {p.leveraged_underlying && p.leverage_factor && (
+                      <span style={{
+                        marginLeft: "0.4rem",
+                        fontSize: "0.7rem",
+                        padding: "0.1rem 0.4rem",
+                        borderRadius: "4px",
+                        background: p.leverage_factor > 0 ? "#16a34a22" : "#dc262622",
+                        color: p.leverage_factor > 0 ? "#4ade80" : "#f87171",
+                        border: `1px solid ${p.leverage_factor > 0 ? "#16a34a55" : "#dc262655"}`,
+                        whiteSpace: "nowrap",
+                      }}>
+                        {p.leverage_factor > 0 ? "+" : ""}{p.leverage_factor}x {p.leveraged_underlying}
+                      </span>
+                    )}
+                  </td>
+                  <td>{p.quantity % 1 === 0 ? p.quantity : p.quantity.toFixed(2)}</td>
+                  <td>{fmt(p.avg_cost)}</td>
+                  <td>{fmt(p.current_price)}</td>
+                  <td>{fmt(p.market_value)}</td>
+                  <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
+                  <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>
+                  <td className="quick-actions">
+                    <button className="btn-quick btn-quick-buy" onClick={() => setModal({ action: "BUY", ticker: p.ticker, price: p.current_price })}>Buy</button>
+                    <button className="btn-quick btn-quick-sell" onClick={() => setModal({ action: "SELL", ticker: p.ticker, price: p.current_price })}>Sell</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {modal && (

@@ -23,7 +23,7 @@ interface EditState {
 }
 
 export default function History() {
-  const [view, setView] = useState<View>("transactions");
+  const [view, setView] = useState<View>("closed");
   const [trades, setTrades] = useState<Trade[]>([]);
   const [closedLots, setClosedLots] = useState<ClosedLot[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -140,10 +140,10 @@ export default function History() {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem" }}>
         <h2 style={{ margin: 0 }}>{view === "transactions" ? "Transaction History" : "Closed Trades"}</h2>
         <div style={{ display: "flex", marginLeft: "auto", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
-          {(["transactions", "closed"] as View[]).map((v, i) => (
+          {(["closed", "transactions"] as View[]).map((v, i) => (
             <button
               key={v}
               onClick={() => { setView(v); setDeleteError(null); }}
@@ -222,74 +222,76 @@ export default function History() {
           {txFiltered.length === 0 ? (
             <p className="empty-msg">{filtered.length === 0 ? "No trades recorded yet." : "No trades match the current filters."}</p>
           ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Action</th>
-                <th>Ticker</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Total</th>
-                <th>Fees</th>
-                <th>Platform</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {txFiltered.map((t) => {
-                const locked = isLocked(t);
-                return (
-                  <tr key={t.id}>
-                    <td>{new Date(t.executed_at).toLocaleDateString("en-GB")}</td>
-                    <td><span className={`tag ${t.action === "BUY" ? "tag-buy" : "tag-sell"}`}>{t.action}</span></td>
-                    <td><strong>{t.ticker}</strong></td>
-                    <td>{t.quantity % 1 === 0 ? t.quantity : t.quantity.toFixed(2)}</td>
-                    <td>{fmt(t.price)}</td>
-                    <td>{fmt(t.quantity * t.price)}</td>
-                    <td>{t.fees ? fmt(t.fees) : "—"}</td>
-                    <td>{t.platform || "—"}</td>
-                    <td style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                      <button
-                        onClick={() => openEdit(t)}
-                        disabled={locked}
-                        title={locked ? "Cannot edit: a later trade depends on this one" : "Edit trade"}
-                        style={{
-                          padding: "0.25rem 0.6rem",
-                          fontSize: "0.78rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "var(--radius)",
-                          background: "transparent",
-                          color: locked ? "var(--text-muted)" : "var(--accent)",
-                          cursor: locked ? "not-allowed" : "pointer",
-                          opacity: locked ? 0.4 : 1,
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(t)}
-                        disabled={locked}
-                        title={locked ? "Cannot delete: a later trade depends on this one" : "Delete trade"}
-                        style={{
-                          padding: "0.25rem 0.6rem",
-                          fontSize: "0.78rem",
-                          border: "1px solid var(--border)",
-                          borderRadius: "var(--radius)",
-                          background: "transparent",
-                          color: locked ? "var(--text-muted)" : "#ef4444",
-                          cursor: locked ? "not-allowed" : "pointer",
-                          opacity: locked ? 0.4 : 1,
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Action</th>
+                  <th>Ticker</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                  <th>Fees</th>
+                  <th>Platform</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {txFiltered.map((t) => {
+                  const locked = isLocked(t);
+                  return (
+                    <tr key={t.id}>
+                      <td>{new Date(t.executed_at).toLocaleDateString("en-GB")}</td>
+                      <td><span className={`tag ${t.action === "BUY" ? "tag-buy" : "tag-sell"}`}>{t.action}</span></td>
+                      <td><strong>{t.ticker}</strong></td>
+                      <td>{t.quantity % 1 === 0 ? t.quantity : t.quantity.toFixed(2)}</td>
+                      <td>{fmt(t.price)}</td>
+                      <td>{fmt(t.quantity * t.price)}</td>
+                      <td>{t.fees ? fmt(t.fees) : "—"}</td>
+                      <td>{t.platform || "—"}</td>
+                      <td style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                        <button
+                          onClick={() => openEdit(t)}
+                          disabled={locked}
+                          title={locked ? "Cannot edit: a later trade depends on this one" : "Edit trade"}
+                          style={{
+                            padding: "0.25rem 0.6rem",
+                            fontSize: "0.78rem",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius)",
+                            background: "transparent",
+                            color: locked ? "var(--text-muted)" : "var(--accent)",
+                            cursor: locked ? "not-allowed" : "pointer",
+                            opacity: locked ? 0.4 : 1,
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(t)}
+                          disabled={locked}
+                          title={locked ? "Cannot delete: a later trade depends on this one" : "Delete trade"}
+                          style={{
+                            padding: "0.25rem 0.6rem",
+                            fontSize: "0.78rem",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius)",
+                            background: "transparent",
+                            color: locked ? "var(--text-muted)" : "#ef4444",
+                            cursor: locked ? "not-allowed" : "pointer",
+                            opacity: locked ? 0.4 : 1,
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           )}
         </>
       )}
@@ -440,34 +442,36 @@ export default function History() {
           {closedFiltered.length === 0 ? (
             <p className="empty-msg">{closedLots.length === 0 ? "No closed trades yet." : "No trades match the current filters."}</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Qty</th>
-                  <th>Opened</th>
-                  <th>Closed</th>
-                  <th>Avg Buy</th>
-                  <th>Avg Sell</th>
-                  <th>P&amp;L</th>
-                  <th>Return</th>
-                </tr>
-              </thead>
-              <tbody>
-                {closedFiltered.map((lot, i) => (
-                  <tr key={i}>
-                    <td><strong>{lot.ticker}</strong></td>
-                    <td>{lot.quantity % 1 === 0 ? lot.quantity : lot.quantity.toFixed(2)}</td>
-                    <td>{lot.open_date.split("-").reverse().join("-")}</td>
-                    <td>{lot.close_date.split("-").reverse().join("-")}</td>
-                    <td>{fmt(lot.avg_buy_price)}</td>
-                    <td>{fmt(lot.avg_sell_price)}</td>
-                    <td className={pnlClass(lot.pnl)}>{fmt(lot.pnl)}</td>
-                    <td className={pnlClass(lot.pnl_pct)}>{lot.pnl_pct >= 0 ? "+" : ""}{lot.pnl_pct.toFixed(2)}%</td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Qty</th>
+                    <th>Opened</th>
+                    <th>Closed</th>
+                    <th>Avg Buy</th>
+                    <th>Avg Sell</th>
+                    <th>P&amp;L</th>
+                    <th>Return</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {closedFiltered.map((lot, i) => (
+                    <tr key={i}>
+                      <td><strong>{lot.ticker}</strong></td>
+                      <td>{lot.quantity % 1 === 0 ? lot.quantity : lot.quantity.toFixed(2)}</td>
+                      <td>{lot.open_date.split("-").reverse().join("-")}</td>
+                      <td>{lot.close_date.split("-").reverse().join("-")}</td>
+                      <td>{fmt(lot.avg_buy_price)}</td>
+                      <td>{fmt(lot.avg_sell_price)}</td>
+                      <td className={pnlClass(lot.pnl)}>{fmt(lot.pnl)}</td>
+                      <td className={pnlClass(lot.pnl_pct)}>{lot.pnl_pct >= 0 ? "+" : ""}{lot.pnl_pct.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
