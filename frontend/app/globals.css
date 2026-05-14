@@ -545,3 +545,42 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     padding: 0 1rem;
   }
 }
+
+/* ── Chat toolbar ──────────────────────────────────────────── */
+.chat-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chat-toolbar-providers {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .chat-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .chat-toolbar-providers {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .chat-toolbar-providers::-webkit-scrollbar { display: none; }
+
+  .chat-toolbar-actions {
+    justify-content: flex-end;
+  }
+}

@@ -304,8 +304,8 @@ export default function Chat() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 160px)" }}>
       {/* Toolbar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-      <div style={{ display: "flex", gap: "0.5rem" }}>
+      <div className="chat-toolbar">
+      <div className="chat-toolbar-providers">
         {PROVIDERS.map(p => (
           <button
             key={p.value}
@@ -326,7 +326,7 @@ export default function Chat() {
           </button>
         ))}
       </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div className="chat-toolbar-actions">
           <button
             onClick={() => { setIdeasOpen(o => !o); setHistoryOpen(false); }}
             style={{
