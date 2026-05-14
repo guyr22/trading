@@ -1,20 +1,34 @@
+import os
 from contextlib import asynccontextmanager
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
+from sqlalchemy import inspect
 
 from core.logging import get_logger
-from database import Base, SessionLocal, engine
+from database import SessionLocal, engine
 from repositories.etf_repository import EtfRepository
 from services.price_service import price_service
 from startup.seed_data import SEED_LEVERAGED_ETFS
 
 logger = get_logger(__name__)
 
+_ALEMBIC_INI = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting up — creating database tables if needed")
-    Base.metadata.create_all(bind=engine)
+    logger.info("Starting up — running Alembic migrations")
+    alembic_cfg = Config(_ALEMBIC_INI)
+    existing_tables = inspect(engine).get_table_names()
+    if "alembic_version" not in existing_tables and existing_tables:
+        # Pre-existing database (created by create_all before Alembic was added).
+        # Stamp to head so future migrations run incrementally without re-creating tables.
+        logger.info("Existing DB without Alembic tracking — stamping to head")
+        command.stamp(alembic_cfg, "head")
+    else:
+        command.upgrade(alembic_cfg, "head")
     logger.info("Database ready")
 
     with SessionLocal() as db:

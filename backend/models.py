@@ -1,6 +1,7 @@
 from datetime import date, datetime
+from typing import Optional
 
-from sqlalchemy import Float, Index, Integer, String, Date, DateTime, Enum as SAEnum
+from sqlalchemy import Float, Index, Integer, String, Date, DateTime, Enum as SAEnum, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -39,10 +40,10 @@ class Trade(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     action: Mapped[str] = mapped_column(SAEnum(TradeAction))
-    ticker: Mapped[str] = mapped_column(String, index=True)
+    ticker: Mapped[str] = mapped_column(String(10), index=True)
     quantity: Mapped[float] = mapped_column(Float)
     price: Mapped[float] = mapped_column(Float)
-    fees: Mapped[float] = mapped_column(Float, default=0.0, nullable=True)
-    platform: Mapped[str] = mapped_column(String, nullable=True)
+    fees: Mapped[Optional[float]] = mapped_column(Float, nullable=True, server_default="0")
+    platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
