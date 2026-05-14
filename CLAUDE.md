@@ -99,7 +99,7 @@ Full-stack trading portfolio tracker with separate backend and frontend servers.
 - No cash/account management — the app tracks positions and P&L only
 - Live prices fetched via yfinance with 30-second cache; falls back to avg cost on failure
 - Positions are computed dynamically from the trades table (no separate positions table)
-- Database is SQLite locally / PostgreSQL in Docker; tables auto-created via FastAPI lifespan event; no migrations
+- Database is SQLite locally / PostgreSQL in Docker; schema managed by **Alembic** — migrations run automatically on startup via `alembic upgrade head`
 - **Index funds** (`VOO`, `SPY`, `QQQ`, `IBIT`, `ETHA`) are tracked but excluded from all statistics, dashboard totals, and chat context — see `INDEX_TICKERS_SET` in `main.py`
 
 ### FIFO Logic
@@ -115,5 +115,23 @@ Both functions maintain separate long/short lot queues. Fees are deducted propor
 `_build_chat_context(db)` in `main.py` builds the system prompt per request. It includes: portfolio summary (market value, unrealized/realized P&L, total fees), open positions, last 20 trades, and all closed lots sorted by P&L descending with percentage return. This is regenerated on every chat request — no caching.
 
 Supported providers and models: Claude (`claude-haiku-4-5-20251001`), OpenAI (`gpt-4o-mini`), Gemini (`gemini-3-flash-preview`, `gemini-2.5-flash`). API keys are read from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
+
+### Schema Changes (Alembic)
+
+**Never use `create_all` or manual `ALTER TABLE` to change the schema.** All schema changes must go through Alembic:
+
+1. Edit `backend/models.py` with the desired change
+2. Generate a migration from the `backend/` directory:
+   ```bash
+   python -m alembic revision --autogenerate -m "describe the change"
+   ```
+3. Review the generated file in `backend/alembic/versions/` — confirm the `upgrade()` and `downgrade()` functions are correct
+4. Commit the migration file alongside the model change
+
+Migrations run automatically on every deploy (`alembic upgrade head` in the FastAPI lifespan). To apply locally without restarting the server:
+```bash
+cd backend
+python -m alembic upgrade head
+```
 
 ### Never insert, modify, or leave test/placeholder data in the database. Only the user decides what goes into the DB.
