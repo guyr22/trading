@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
+from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from database import SessionLocal, engine
 from repositories.etf_repository import EtfRepository
@@ -16,6 +17,27 @@ from startup.seed_data import SEED_LEVERAGED_ETFS
 logger = get_logger(__name__)
 
 _ALEMBIC_INI = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+_INDEX_TICKERS_SQL = ", ".join(f"'{t}'" for t in INDEX_TICKERS_SET)
+
+
+def _migrate_index_trades_if_needed() -> None:
+    """Move any lingering index-ticker rows from trades -> index_trades (one-time, idempotent)."""
+    with SessionLocal() as db:
+        remaining = db.execute(
+            text(f"SELECT COUNT(*) FROM trades WHERE ticker IN ({_INDEX_TICKERS_SQL})")
+        ).scalar()
+        if not remaining:
+            return
+        logger.info("Migrating %d index trade(s) from trades -> index_trades", remaining)
+        db.execute(text(f"""
+            INSERT INTO index_trades (action, ticker, quantity, price, fees, platform, executed_at)
+            SELECT action, ticker, quantity, price, fees, platform, executed_at
+            FROM trades
+            WHERE ticker IN ({_INDEX_TICKERS_SQL})
+        """))
+        db.execute(text(f"DELETE FROM trades WHERE ticker IN ({_INDEX_TICKERS_SQL})"))
+        db.commit()
+        logger.info("Index trade migration complete")
 
 
 @asynccontextmanager
@@ -31,10 +53,16 @@ async def lifespan(app: FastAPI):
     else:
         try:
             command.upgrade(alembic_cfg, "head")
-        except Exception:
+        except BaseException:
             logger.error("Alembic migration failed:\n%s", traceback.format_exc())
             raise
     logger.info("Database ready")
+
+    try:
+        _migrate_index_trades_if_needed()
+    except Exception:
+        logger.error("Index trade data migration failed:\n%s", traceback.format_exc())
+        raise
 
     with SessionLocal() as db:
         etf_repo = EtfRepository(db)
