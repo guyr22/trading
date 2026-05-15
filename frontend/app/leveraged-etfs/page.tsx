@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchLeveragedEtfs, createLeveragedEtf, deleteLeveragedEtf, type LeveragedEtf } from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function LeveragedEtfsPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user && !user.is_admin) router.replace("/");
+  }, [user, loading]);
+
+  if (loading || !user?.is_admin) return null;
   const [etfs, setEtfs] = useState<LeveragedEtf[]>([]);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ ticker: "", underlying: "", leverage_factor: "", name: "" });

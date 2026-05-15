@@ -6,12 +6,16 @@ import { useAuth } from "../contexts/AuthContext";
 import { useState } from "react";
 import { createInvite } from "../api";
 
-const NAV = [
+const NAV_ALL = [
   { href: "/", label: "Dashboard" },
   { href: "/history", label: "History" },
   { href: "/indexes", label: "Indexes" },
   { href: "/statistics", label: "Statistics" },
   { href: "/chat", label: "AI" },
+];
+
+const NAV_ADMIN = [
+  ...NAV_ALL,
   { href: "/leveraged-etfs", label: "Lev. ETFs" },
 ];
 
@@ -47,7 +51,7 @@ export default function NavBar() {
     <header>
       <h1>Portfolio Tracker</h1>
       <nav>
-        {NAV.map(({ href, label }) => (
+        {(user?.is_admin ? NAV_ADMIN : NAV_ALL).map(({ href, label }) => (
           <Link
             key={href}
             href={href}
