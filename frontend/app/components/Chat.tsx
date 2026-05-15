@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, type ChatMessage } from "../api";
 
 const PROVIDERS = [
-  { value: "gemini", label: "Gemini 2 Flash", color: "#4285f4" },
+  { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
 ];
 
@@ -113,7 +113,7 @@ function makeTitle(messages: ChatMessage[]) {
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [provider, setProvider] = useState("claude");
+  const [provider, setProvider] = useState("gemini");
   const [loading, setLoading] = useState(false);
   const [streamingReply, setStreamingReply] = useState("");
   const [toolStatus, setToolStatus] = useState("");
