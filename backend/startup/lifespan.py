@@ -42,20 +42,35 @@ def _migrate_index_trades_if_needed() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting up — running Alembic migrations")
+    logger.info("Starting up — preparing database schema")
     alembic_cfg = Config(_ALEMBIC_INI)
     existing_tables = inspect(engine).get_table_names()
+
     if "alembic_version" not in existing_tables and existing_tables:
-        # Pre-existing database (created by create_all before Alembic was added).
-        # Stamp to head so future migrations run incrementally without re-creating tables.
+        # Pre-existing DB created by create_all before Alembic was introduced.
+        # Stamp to head without running any migrations.
         logger.info("Existing DB without Alembic tracking — stamping to head")
         command.stamp(alembic_cfg, "head")
+
+    elif "trades" in existing_tables and "index_trades" not in existing_tables:
+        # index_trades is missing on an existing DB (Railway upgrade path).
+        # Alembic's migration for this table crashes the process silently on
+        # Railway — bypass it by creating the table directly with SQLAlchemy
+        # (create_type=False on the IndexTrade model prevents re-creating the
+        # tradeaction enum that already exists), then stamp to head.
+        logger.info("index_trades missing — creating directly and stamping to head")
+        from models import IndexTrade
+        IndexTrade.__table__.create(bind=engine, checkfirst=True)
+        command.stamp(alembic_cfg, "head")
+        logger.info("index_trades created and stamped")
+
     else:
         try:
             command.upgrade(alembic_cfg, "head")
         except BaseException:
             logger.error("Alembic migration failed:\n%s", traceback.format_exc())
             raise
+
     logger.info("Database ready")
 
     try:

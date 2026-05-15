@@ -56,7 +56,7 @@ class IndexTrade(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    action: Mapped[str] = mapped_column(SAEnum(TradeAction))
+    action: Mapped[str] = mapped_column(SAEnum(TradeAction, create_type=False))
     ticker: Mapped[str] = mapped_column(String(10), index=True)
     quantity: Mapped[float] = mapped_column(Float)
     price: Mapped[float] = mapped_column(Float)
