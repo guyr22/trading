@@ -73,7 +73,7 @@ class StatisticsService:
         best_trade = max(pnls) if pnls else 0.0
         worst_trade = min(pnls) if pnls else 0.0
 
-        positions = [p for p in self._portfolio_service.build_positions() if p.ticker not in INDEX_TICKERS_SET]
+        positions = self._portfolio_service.build_positions()
         total_unrealized = sum(p.unrealized_pnl for p in positions)
         total_pnl = sum(pnls) + total_unrealized
 
