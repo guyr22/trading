@@ -36,11 +36,13 @@ def upgrade() -> None:
     op.create_index(op.f('ix_index_trades_ticker'), 'index_trades', ['ticker'], unique=False)
     op.create_index('ix_index_trades_ticker_date_id', 'index_trades', ['ticker', 'executed_at', 'id'], unique=False)
 
-    # Move existing index trades out of the trades table
+    # Move existing index trades out of the trades table.
+    # created_at is intentionally omitted so the server default (CURRENT_TIMESTAMP)
+    # fills it in — avoids NULL constraint issues on rows imported before the column existed.
     index_tickers = "('VOO', 'SPY', 'QQQ', 'IBIT', 'ETHA')"
     op.execute(f"""
-        INSERT INTO index_trades (action, ticker, quantity, price, fees, platform, executed_at, created_at)
-        SELECT action, ticker, quantity, price, fees, platform, executed_at, created_at
+        INSERT INTO index_trades (action, ticker, quantity, price, fees, platform, executed_at)
+        SELECT action, ticker, quantity, price, fees, platform, executed_at
         FROM trades
         WHERE ticker IN {index_tickers}
     """)

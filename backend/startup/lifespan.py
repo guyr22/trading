@@ -1,4 +1,5 @@
 import os
+import traceback
 from contextlib import asynccontextmanager
 
 from alembic import command
@@ -28,7 +29,11 @@ async def lifespan(app: FastAPI):
         logger.info("Existing DB without Alembic tracking — stamping to head")
         command.stamp(alembic_cfg, "head")
     else:
-        command.upgrade(alembic_cfg, "head")
+        try:
+            command.upgrade(alembic_cfg, "head")
+        except Exception:
+            logger.error("Alembic migration failed:\n%s", traceback.format_exc())
+            raise
     logger.info("Database ready")
 
     with SessionLocal() as db:
