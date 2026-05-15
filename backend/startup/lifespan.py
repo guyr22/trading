@@ -158,6 +158,14 @@ async def lifespan(app: FastAPI):
         existing_tables = inspect(engine).get_table_names()
         logger.info("Auth tables pre-created before migration paths")
 
+    # Read the current Alembic version (if any) to decide the migration path.
+    _current_version: str | None = None
+    if "alembic_version" in existing_tables:
+        with engine.connect() as _conn:
+            _current_version = _conn.execute(
+                text("SELECT version_num FROM alembic_version LIMIT 1")
+            ).scalar()
+
     if "alembic_version" not in existing_tables and existing_tables:
         # Pre-existing DB created by create_all before Alembic was introduced.
         # Stamp to head without running any migrations.
@@ -171,6 +179,12 @@ async def lifespan(app: FastAPI):
         IndexTrade.__table__.create(bind=engine, checkfirst=True)
         command.stamp(alembic_cfg, "head")
         logger.info("index_trades created and stamped")
+
+    elif _current_version == "e920117ef5cf":
+        # Auth migration (a1b2c3d4e5f6) hangs silently on Railway — bypass it.
+        # _ensure_auth_schema() below will apply the actual DDL changes.
+        logger.info("Bypassing auth Alembic migration — stamping to head, schema applied via _ensure_auth_schema()")
+        command.stamp(alembic_cfg, "head")
 
     else:
         try:
