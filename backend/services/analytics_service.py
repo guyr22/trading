@@ -28,8 +28,9 @@ class AnalyticsService:
         portfolio_service: PortfolioService,
         statistics_service: StatisticsService,
         price_service: PriceService,
+        user_id: int = 0,
     ) -> None:
-        self._trade_repo = TradeRepository(db)
+        self._trade_repo = TradeRepository(db, user_id)
         self._portfolio_service = portfolio_service
         self._statistics_service = statistics_service
         self._price_service = price_service

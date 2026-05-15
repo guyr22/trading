@@ -8,8 +8,8 @@ from services.portfolio_service import PortfolioService
 
 
 class StatisticsService:
-    def __init__(self, db: Session, portfolio_service: PortfolioService, etf_repo: EtfRepository) -> None:
-        self._trade_repo = TradeRepository(db)
+    def __init__(self, db: Session, portfolio_service: PortfolioService, etf_repo: EtfRepository, user_id: int) -> None:
+        self._trade_repo = TradeRepository(db, user_id)
         self._portfolio_service = portfolio_service
         self._etf_repo = etf_repo
 

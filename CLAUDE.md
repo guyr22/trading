@@ -56,6 +56,11 @@ The app runs on Railway with three services: **backend**, **frontend**, and **Po
 | backend  | `ANTHROPIC_API_KEY` | from `.env` |
 | backend  | `GOOGLE_API_KEY` | from `.env` |
 | backend  | `PORT` | set to `8000` to pin it |
+| backend  | `ADMIN_EMAIL` | your email — creates the first admin user on startup |
+| backend  | `ADMIN_PASSWORD` | your password for the admin account |
+| backend  | `JWT_SECRET_KEY` | random secret for signing JWTs (`openssl rand -hex 32`) |
+| backend  | `SECURE_COOKIES` | `true` in production (Railway uses HTTPS) |
+| backend  | `FRONTEND_URL` | your Railway frontend public URL |
 | frontend | `BACKEND_URL` | `http://<backend-internal-hostname>.railway.internal:8000` |
 
 **Local → Railway data migration:**

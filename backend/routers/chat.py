@@ -4,10 +4,12 @@ import time
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from auth.dependencies import get_current_user
 from chat.provider_factory import get_provider
 from chat.tool_executor import ToolExecutor
 from core.logging import get_logger
 from dependencies import get_analytics_service, get_chat_context_service, get_config_repo
+from models import User
 from repositories.config_repository import ConfigRepository
 from schemas import AppConfigUpdate, ChatRequest, TechnicalChatRequest
 from services.analytics_service import AnalyticsService
@@ -86,7 +88,10 @@ def chat_endpoint(
 
 
 @router.get("/api/config/ta-prompt")
-def get_ta_prompt(config_repo: ConfigRepository = Depends(get_config_repo)):
+def get_ta_prompt(
+    config_repo: ConfigRepository = Depends(get_config_repo),
+    _user: User = Depends(get_current_user),
+):
     config = config_repo.get(_TA_PROMPT_KEY)
     return {"value": config.value if config else ""}
 
@@ -95,6 +100,7 @@ def get_ta_prompt(config_repo: ConfigRepository = Depends(get_config_repo)):
 def update_ta_prompt(
     update: AppConfigUpdate,
     config_repo: ConfigRepository = Depends(get_config_repo),
+    _user: User = Depends(get_current_user),
 ):
     config_repo.set(_TA_PROMPT_KEY, update.value)
     logger.info("TA system prompt updated (%d chars)", len(update.value))
@@ -102,7 +108,10 @@ def update_ta_prompt(
 
 
 @router.post("/api/chat/technical")
-def technical_chat_endpoint(request: TechnicalChatRequest):
+def technical_chat_endpoint(
+    request: TechnicalChatRequest,
+    _user: User = Depends(get_current_user),
+):
     logger.info(
         "Technical chat  provider=%s  messages=%d  images=%d",
         request.provider, len(request.messages), len(request.images),

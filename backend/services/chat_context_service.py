@@ -42,8 +42,8 @@ FOLLOW_UP_INSTRUCTIONS = (
     "  • Keep each question short (one line each)."
 )
 
-# Cache keyed on (trade_count, max_trade_id) — invalidates automatically when a trade is added.
-_context_cache: dict[tuple[int, int], str] = {}
+# Cache keyed on (user_id, trade_count, max_trade_id) — invalidates automatically when a trade is added.
+_context_cache: dict[tuple[int, int, int], str] = {}
 
 
 class ChatContextService:
@@ -52,10 +52,12 @@ class ChatContextService:
         db: Session,
         portfolio_service: PortfolioService,
         analytics_service: AnalyticsService | None = None,
+        user_id: int = 0,
     ) -> None:
-        self._trade_repo = TradeRepository(db)
+        self._trade_repo = TradeRepository(db, user_id)
         self._portfolio_service = portfolio_service
         self._analytics_service = analytics_service
+        self._user_id = user_id
 
     def _build_behavioral_brief(self) -> str:
         """Return top-2 behavioral flags as a concise string (capped ~350 chars). Empty on failure."""
@@ -78,7 +80,7 @@ class ChatContextService:
 
     def build(self) -> str:
         count, max_id = self._trade_repo.get_count_and_max_id()
-        key = (count, max_id)
+        key = (self._user_id, count, max_id)
         cached = _context_cache.get(key)
         if cached is not None:
             return cached

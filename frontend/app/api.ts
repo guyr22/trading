@@ -1,5 +1,40 @@
 const API = "/api";
 
+const OPTS: RequestInit = { credentials: "include" };
+
+function json(body: unknown): RequestInit {
+  return { ...OPTS, method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  is_admin: boolean;
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const res = await fetch(`${API}/auth/login`, json({ email, password }));
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Login failed"); }
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  await fetch(`${API}/auth/logout`, { ...OPTS, method: "POST" });
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  const res = await fetch(`${API}/auth/me`, OPTS);
+  if (!res.ok) throw new Error("Not authenticated");
+  return res.json();
+}
+
+export async function createInvite(): Promise<string> {
+  const res = await fetch(`${API}/auth/invite`, { ...OPTS, method: "POST" });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to create invite"); }
+  const data = await res.json();
+  return data.token;
+}
+
 export interface Position {
   ticker: string;
   quantity: number;
@@ -121,50 +156,43 @@ export interface ChatInsights {
 }
 
 export async function fetchInsights(): Promise<ChatInsights> {
-  const res = await fetch(`${API}/chat/insights`);
+  const res = await fetch(`${API}/chat/insights`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch insights");
   return res.json();
 }
 
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
-  const res = await fetch(`${API}/portfolio`);
+  const res = await fetch(`${API}/portfolio`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch portfolio");
   return res.json();
 }
 
 export async function fetchIndexPortfolio(): Promise<PortfolioSummary> {
-  const res = await fetch(`${API}/index-portfolio`);
+  const res = await fetch(`${API}/index-portfolio`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch index portfolio");
   return res.json();
 }
 
 export async function fetchTrades(): Promise<Trade[]> {
-  const res = await fetch(`${API}/trades`);
+  const res = await fetch(`${API}/trades`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch trades");
   return res.json();
 }
 
 export async function fetchIndexTrades(): Promise<Trade[]> {
-  const res = await fetch(`${API}/index-trades`);
+  const res = await fetch(`${API}/index-trades`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch index trades");
   return res.json();
 }
 
 export async function createIndexTrade(payload: TradePayload): Promise<Trade> {
-  const res = await fetch(`${API}/index-trades`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Trade failed");
-  }
+  const res = await fetch(`${API}/index-trades`, json(payload));
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Trade failed"); }
   return res.json();
 }
 
 export async function fetchStatistics(): Promise<PortfolioStatistics> {
-  const res = await fetch(`${API}/statistics`);
+  const res = await fetch(`${API}/statistics`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch statistics");
   return res.json();
 }
@@ -206,9 +234,7 @@ export async function sendChatMessage(
   onToolCall?: (toolName: string) => void,
 ): Promise<void> {
   const res = await fetch(`${API}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, provider }),
+    ...json({ messages, provider }),
   });
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
@@ -236,7 +262,7 @@ export async function sendChatMessage(
 }
 
 export async function fetchTaPrompt(): Promise<string> {
-  const res = await fetch(`${API}/config/ta-prompt`);
+  const res = await fetch(`${API}/config/ta-prompt`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch TA prompt");
   const data = await res.json();
   return data.value;
@@ -244,9 +270,7 @@ export async function fetchTaPrompt(): Promise<string> {
 
 export async function saveTaPrompt(value: string): Promise<void> {
   const res = await fetch(`${API}/config/ta-prompt`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ value }),
+    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }),
   });
   if (!res.ok) throw new Error("Failed to save TA prompt");
 }
@@ -257,71 +281,42 @@ export async function sendTechnicalChatMessage(
   onChunk: (text: string) => void,
   images?: string[],
 ): Promise<void> {
-  const res = await fetch(`${API}/chat/technical`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, provider, images: images ?? [] }),
-  });
+  const res = await fetch(`${API}/chat/technical`, json({ messages, provider, images: images ?? [] }));
   await _readNdjsonStream(res, onChunk);
 }
 
 export async function fetchLeveragedEtfs(): Promise<LeveragedEtf[]> {
-  const res = await fetch(`${API}/leveraged-etfs`);
+  const res = await fetch(`${API}/leveraged-etfs`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch leveraged ETFs");
   return res.json();
 }
 
 export async function createLeveragedEtf(payload: LeveragedEtfPayload): Promise<LeveragedEtf> {
-  const res = await fetch(`${API}/leveraged-etfs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to add ETF");
-  }
+  const res = await fetch(`${API}/leveraged-etfs`, json(payload));
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Failed to add ETF"); }
   return res.json();
 }
 
 export async function deleteLeveragedEtf(ticker: string): Promise<void> {
-  const res = await fetch(`${API}/leveraged-etfs/${ticker}`, { method: "DELETE" });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to delete ETF");
-  }
+  const res = await fetch(`${API}/leveraged-etfs/${ticker}`, { ...OPTS, method: "DELETE" });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Failed to delete ETF"); }
 }
 
 export async function deleteTrade(id: number): Promise<void> {
-  const res = await fetch(`${API}/trades/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to delete trade");
-  }
+  const res = await fetch(`${API}/trades/${id}`, { ...OPTS, method: "DELETE" });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Failed to delete trade"); }
 }
 
 export async function updateTrade(id: number, payload: Partial<TradePayload>): Promise<Trade> {
   const res = await fetch(`${API}/trades/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Failed to update trade");
-  }
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Failed to update trade"); }
   return res.json();
 }
 
 export async function createTrade(payload: TradePayload): Promise<Trade> {
-  const res = await fetch(`${API}/trades`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Trade failed");
-  }
+  const res = await fetch(`${API}/trades`, json(payload));
+  if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Trade failed"); }
   return res.json();
 }

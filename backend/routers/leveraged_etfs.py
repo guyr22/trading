@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from auth.dependencies import get_current_user
 from core.logging import get_logger
 from dependencies import get_etf_repo
 from models import LeveragedEtf
 from repositories.etf_repository import EtfRepository
 from schemas import LeveragedEtfCreate, LeveragedEtfResponse
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 logger = get_logger(__name__)
 
 

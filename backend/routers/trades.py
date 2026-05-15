@@ -2,10 +2,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from auth.dependencies import get_current_user
 from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from dependencies import get_etf_repo, get_trade_repo
-from models import Trade, TradeAction
+from models import Trade, TradeAction, User
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
 from schemas import TradeCreate, TradeResponse, TradeUpdate
@@ -18,6 +19,7 @@ logger = get_logger(__name__)
 def create_trade(
     trade_in: TradeCreate,
     trade_repo: TradeRepository = Depends(get_trade_repo),
+    current_user: User = Depends(get_current_user),
 ):
     ticker = trade_in.ticker.upper()
 
@@ -40,6 +42,7 @@ def create_trade(
             )
 
     trade = Trade(
+        user_id=current_user.id,
         action=trade_in.action,
         ticker=ticker,
         quantity=trade_in.quantity,

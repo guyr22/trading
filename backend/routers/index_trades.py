@@ -2,10 +2,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from auth.dependencies import get_current_user
 from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from dependencies import get_index_trade_repo
-from models import IndexTrade, TradeAction
+from models import IndexTrade, TradeAction, User
 from repositories.index_trade_repository import IndexTradeRepository
 from schemas import TradeCreate, TradeResponse
 
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 def create_index_trade(
     trade_in: TradeCreate,
     repo: IndexTradeRepository = Depends(get_index_trade_repo),
+    current_user: User = Depends(get_current_user),
 ):
     ticker = trade_in.ticker.upper()
 
@@ -35,6 +37,7 @@ def create_index_trade(
             )
 
     trade = IndexTrade(
+        user_id=current_user.id,
         action=trade_in.action,
         ticker=ticker,
         quantity=trade_in.quantity,

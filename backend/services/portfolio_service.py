@@ -9,8 +9,8 @@ from services.price_service import PriceService
 
 
 class PortfolioService:
-    def __init__(self, db: Session, price_service: PriceService) -> None:
-        self._trade_repo = TradeRepository(db)
+    def __init__(self, db: Session, price_service: PriceService, user_id: int) -> None:
+        self._trade_repo = TradeRepository(db, user_id)
         self._etf_repo = EtfRepository(db)
         self._price_service = price_service
 

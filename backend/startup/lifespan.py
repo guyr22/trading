@@ -40,11 +40,123 @@ def _migrate_index_trades_if_needed() -> None:
         logger.info("Index trade migration complete")
 
 
+def _ensure_auth_schema() -> None:
+    """Create auth tables and user_id columns if they are missing (idempotent).
+
+    Runs after every migration path so that the local Docker case (where we stamp
+    instead of running migrations) still gets the auth schema.
+    """
+    from sqlalchemy import inspect as sa_inspect, text
+
+    inspector = sa_inspect(engine)
+    existing = inspector.get_table_names()
+
+    if "users" not in existing:
+        from models import User
+        User.__table__.create(bind=engine, checkfirst=True)
+        logger.info("Created users table")
+
+    if "invites" not in existing:
+        from models import Invite
+        Invite.__table__.create(bind=engine, checkfirst=True)
+        logger.info("Created invites table")
+
+    # Re-inspect after potential table creation
+    inspector = sa_inspect(engine)
+
+    trades_cols = {c["name"] for c in inspector.get_columns("trades")}
+    if "user_id" not in trades_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE trades ADD COLUMN user_id INTEGER REFERENCES users(id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_trades_user_id ON trades (user_id)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_trades_user_id_date_id "
+                "ON trades (user_id, executed_at, id)"
+            ))
+        logger.info("Added user_id column to trades")
+
+    if "index_trades" in existing:
+        index_cols = {c["name"] for c in inspector.get_columns("index_trades")}
+        if "user_id" not in index_cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE index_trades ADD COLUMN user_id INTEGER REFERENCES users(id)"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_index_trades_user_id ON index_trades (user_id)"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_index_trades_user_id_date_id "
+                    "ON index_trades (user_id, executed_at, id)"
+                ))
+            logger.info("Added user_id column to index_trades")
+
+
+def _ensure_admin_user() -> None:
+    """Create the admin user from env vars on first startup and assign orphaned trades to them."""
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "").strip()
+
+    if not admin_email or not admin_password:
+        logger.warning(
+            "ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin user creation. "
+            "Set these env vars to enable login."
+        )
+        return
+
+    from auth.utils import hash_password
+    from models import User
+
+    with SessionLocal() as db:
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if existing:
+            admin_id = existing.id
+            logger.info("Admin user already exists: %s (id=%d)", admin_email, admin_id)
+        else:
+            admin = User(
+                email=admin_email,
+                password_hash=hash_password(admin_password),
+                is_admin=True,
+            )
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
+            admin_id = admin.id
+            logger.info("Admin user created: %s (id=%d)", admin_email, admin_id)
+
+        # Assign all orphaned trades (user_id IS NULL) to the admin user.
+        orphaned_trades = db.execute(
+            text("SELECT COUNT(*) FROM trades WHERE user_id IS NULL")
+        ).scalar() or 0
+        orphaned_index = db.execute(
+            text("SELECT COUNT(*) FROM index_trades WHERE user_id IS NULL")
+        ).scalar() or 0
+
+        if orphaned_trades:
+            db.execute(text(f"UPDATE trades SET user_id = {admin_id} WHERE user_id IS NULL"))
+            logger.info("Assigned %d orphaned trade(s) to admin (id=%d)", orphaned_trades, admin_id)
+
+        if orphaned_index:
+            db.execute(text(f"UPDATE index_trades SET user_id = {admin_id} WHERE user_id IS NULL"))
+            logger.info("Assigned %d orphaned index trade(s) to admin (id=%d)", orphaned_index, admin_id)
+
+        if orphaned_trades or orphaned_index:
+            db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up — preparing database schema")
     alembic_cfg = Config(_ALEMBIC_INI)
     existing_tables = inspect(engine).get_table_names()
+
+    # Create auth tables first — other tables (e.g. index_trades) now FK to users.
+    if "users" not in existing_tables:
+        from models import User, Invite
+        User.__table__.create(bind=engine, checkfirst=True)
+        Invite.__table__.create(bind=engine, checkfirst=True)
+        existing_tables = inspect(engine).get_table_names()
+        logger.info("Auth tables pre-created before migration paths")
 
     if "alembic_version" not in existing_tables and existing_tables:
         # Pre-existing DB created by create_all before Alembic was introduced.
@@ -54,10 +166,6 @@ async def lifespan(app: FastAPI):
 
     elif "trades" in existing_tables and "index_trades" not in existing_tables:
         # index_trades is missing on an existing DB (Railway upgrade path).
-        # Alembic's migration for this table crashes the process silently on
-        # Railway — bypass it by creating the table directly with SQLAlchemy
-        # (create_type=False on the IndexTrade model prevents re-creating the
-        # tradeaction enum that already exists), then stamp to head.
         logger.info("index_trades missing — creating directly and stamping to head")
         from models import IndexTrade
         IndexTrade.__table__.create(bind=engine, checkfirst=True)
@@ -74,9 +182,21 @@ async def lifespan(app: FastAPI):
     logger.info("Database ready")
 
     try:
+        _ensure_auth_schema()
+    except Exception:
+        logger.error("Auth schema setup failed:\n%s", traceback.format_exc())
+        raise
+
+    try:
         _migrate_index_trades_if_needed()
     except Exception:
         logger.error("Index trade data migration failed:\n%s", traceback.format_exc())
+        raise
+
+    try:
+        _ensure_admin_user()
+    except Exception:
+        logger.error("Admin user setup failed:\n%s", traceback.format_exc())
         raise
 
     with SessionLocal() as db:
