@@ -69,7 +69,7 @@ class Trade(Base):
     fees: Mapped[Optional[float]] = mapped_column(Float, nullable=True, server_default="0")
     platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
 
 
 class IndexTrade(Base):
@@ -88,4 +88,4 @@ class IndexTrade(Base):
     fees: Mapped[Optional[float]] = mapped_column(Float, nullable=True, server_default="0")
     platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
