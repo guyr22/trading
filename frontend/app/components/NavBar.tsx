@@ -18,6 +18,8 @@ const NAV = [
 export default function NavBar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+
+  if (pathname === "/login" || pathname === "/register") return null;
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
 
