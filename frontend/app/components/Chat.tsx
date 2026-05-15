@@ -4,13 +4,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, type ChatMessage } from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 const PROVIDERS = [
   { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
 ];
 
-const STORAGE_KEY = "portfolio_chat_history";
+const storageKey = (userId: number) => `portfolio_chat_history_${userId}`;
 const MAX_HISTORY = 30;
 
 const QUESTION_BANK: { category: string; questions: string[] }[] = [
@@ -91,17 +92,17 @@ interface Conversation {
   provider: string;
 }
 
-function loadHistory(): Conversation[] {
+function loadHistory(userId: number): Conversation[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    return JSON.parse(localStorage.getItem(storageKey(userId)) ?? "[]");
   } catch {
     return [];
   }
 }
 
-function saveHistory(history: Conversation[]) {
+function saveHistory(history: Conversation[], userId: number) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+    localStorage.setItem(storageKey(userId), JSON.stringify(history.slice(0, MAX_HISTORY)));
   } catch {}
 }
 
@@ -111,6 +112,9 @@ function makeTitle(messages: ChatMessage[]) {
 }
 
 export default function Chat() {
+  const { user } = useAuth();
+  const userId = user?.id ?? 0;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [provider, setProvider] = useState("gemini");
@@ -130,8 +134,8 @@ export default function Chat() {
 
   // Load history on mount (always start a new conversation)
   useEffect(() => {
-    setHistory(loadHistory());
-  }, []);
+    if (userId) setHistory(loadHistory(userId));
+  }, [userId]);
 
   // Fetch behavioral insights on mount for the alert banner
   useEffect(() => {
@@ -218,10 +222,10 @@ export default function Chat() {
   useEffect(() => {
     if (messages.length === 0) return;
     const updated: Conversation = { id: convId, createdAt: Date.now(), title: makeTitle(messages), messages, provider };
-    const h = loadHistory();
+    const h = loadHistory(userId);
     const idx = h.findIndex(c => c.id === convId);
     if (idx >= 0) h[idx] = updated; else h.unshift(updated);
-    saveHistory(h);
+    saveHistory(h, userId);
     setHistory(h);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
@@ -249,7 +253,7 @@ export default function Chat() {
   const deleteConversation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const h = history.filter(c => c.id !== id);
-    saveHistory(h);
+    saveHistory(h, userId);
     setHistory(h);
     if (id === convId) startNewChat();
   };
