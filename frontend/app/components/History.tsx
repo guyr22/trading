@@ -5,7 +5,6 @@ import { fetchTrades, fetchStatistics, deleteTrade, updateTrade, type Trade, typ
 
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
-const INDEX_TICKERS = new Set(["VOO", "SPY", "QQQ", "IBIT", "ETHA"]);
 
 type View = "transactions" | "closed";
 
@@ -105,7 +104,7 @@ export default function History() {
     }
   };
 
-  const filtered = trades.filter(t => !INDEX_TICKERS.has(t.ticker));
+  const filtered = trades;
 
   const platformOptions = useMemo(() => {
     const seen = new Set<string>();

@@ -5,7 +5,6 @@ from datetime import date, timedelta
 import yfinance as yf
 from sqlalchemy.orm import Session
 
-from core.config import INDEX_TICKERS_SET
 from domain.finance import ClosedLot, fifo_closed_lots, fifo_full
 from models import Trade, TradeAction
 from repositories.trade_repository import TradeRepository
@@ -96,7 +95,7 @@ class AnalyticsService:
         }
 
     def get_behavioral_patterns(self) -> dict:
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         tickers = list(dict.fromkeys(t.ticker for t in all_trades))
 
         all_closed: list[ClosedLot] = []
@@ -215,10 +214,9 @@ class AnalyticsService:
 
     def get_current_prices(self) -> dict:
         positions = self._portfolio_service.build_positions()
-        non_index = [p for p in positions if p.ticker not in INDEX_TICKERS_SET]
-        if not non_index:
+        if not positions:
             return {"positions": [], "note": "No open positions"}
-        total_mv = sum(p.market_value for p in non_index)
+        total_mv = sum(p.market_value for p in positions)
         result = sorted(
             [
                 {
@@ -231,28 +229,27 @@ class AnalyticsService:
                     "unrealized_pnl_pct": round(float(p.unrealized_pnl_pct), 2),
                     "weight_pct": round(abs(p.market_value) / total_mv * 100, 1) if total_mv else 0,
                 }
-                for p in non_index
+                for p in positions
             ],
             key=lambda x: x["market_value"],
             reverse=True,
         )
         return {
             "total_market_value": round(total_mv, 2),
-            "total_unrealized_pnl": round(sum(p.unrealized_pnl for p in non_index), 2),
+            "total_unrealized_pnl": round(sum(p.unrealized_pnl for p in positions), 2),
             "positions": result,
         }
 
     def get_sector_concentration(self) -> dict:
         positions = self._portfolio_service.build_positions()
-        non_index = [p for p in positions if p.ticker not in INDEX_TICKERS_SET]
-        if not non_index:
+        if not positions:
             return {"sectors": [], "note": "No open positions"}
 
-        total_mv = sum(abs(p.market_value) for p in non_index)
-        self._price_service.prefetch_ticker_info([p.ticker for p in non_index])
+        total_mv = sum(abs(p.market_value) for p in positions)
+        self._price_service.prefetch_ticker_info([p.ticker for p in positions])
 
         sector_map: dict[str, list[dict]] = {}
-        for p in non_index:
+        for p in positions:
             info = self._price_service.get_ticker_info(p.ticker)
             sector = info.get("sector") or "Unknown"
             entry = {
@@ -284,10 +281,10 @@ class AnalyticsService:
             "largest_sector_weight_pct": sectors[0]["weight_pct"] if sectors else None,
         }
 
+
     def get_correlation_analysis(self) -> dict:
         positions = self._portfolio_service.build_positions()
-        non_index = [p for p in positions if p.ticker not in INDEX_TICKERS_SET]
-        tickers = [p.ticker for p in non_index]
+        tickers = [p.ticker for p in positions]
         if len(tickers) < 2:
             return {"error": "Need at least 2 open positions to compute correlation"}
 
@@ -411,12 +408,11 @@ class AnalyticsService:
 
     def get_risk_metrics(self) -> dict:
         positions = self._portfolio_service.build_positions()
-        non_index = [p for p in positions if p.ticker not in INDEX_TICKERS_SET]
-        if not non_index:
+        if not positions:
             return {"note": "No open positions"}
-        total_mv = sum(abs(p.market_value) for p in non_index)
+        total_mv = sum(abs(p.market_value) for p in positions)
         details = []
-        for p in non_index:
+        for p in positions:
             weight = abs(p.market_value) / total_mv * 100 if total_mv else 0
             details.append({
                 "ticker": p.ticker,
@@ -431,11 +427,11 @@ class AnalyticsService:
         concentrated = [d for d in details if d["risk_flag"] == "CONCENTRATED"]
         return {
             "total_market_value": round(total_mv, 2),
-            "position_count": len(non_index),
+            "position_count": len(positions),
             "positions": details,
             "concentrated_positions": concentrated,
             "herfindahl_index": round(
-                sum((abs(p.market_value) / total_mv * 100) ** 2 for p in non_index) / 10000, 4
+                sum((abs(p.market_value) / total_mv * 100) ** 2 for p in positions) / 10000, 4
             ) if total_mv else None,
             "note": (
                 "Herfindahl index near 1.0 = fully concentrated, near 0 = well diversified. "
@@ -445,7 +441,7 @@ class AnalyticsService:
 
     def get_similar_past_setups(self, ticker: str) -> dict:
         ticker = ticker.upper()
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         tickers = list(dict.fromkeys(t.ticker for t in all_trades))
 
         self._price_service.prefetch_ticker_info([ticker] + tickers)
@@ -501,7 +497,7 @@ class AnalyticsService:
         }
 
     def get_fee_impact_report(self) -> dict:
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         if not all_trades:
             return {"note": "No trades found"}
 
@@ -558,7 +554,7 @@ class AnalyticsService:
     def get_behavioral_red_flags(self) -> list[str]:
         """Return up to 2 data-backed behavioral flag strings, or [] if insufficient data."""
         try:
-            all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+            all_trades = self._trade_repo.get_all_ordered()
             by_ticker: dict[str, list[Trade]] = {}
             for t in all_trades:
                 by_ticker.setdefault(t.ticker, []).append(t)
@@ -611,7 +607,7 @@ class AnalyticsService:
         percentage of winners closed before the average winner hold time, and
         a plain-English interpretation.  Requires at least 5 closed lots.
         """
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         by_ticker: dict[str, list[Trade]] = {}
         for trade in all_trades:
             by_ticker.setdefault(trade.ticker, []).append(trade)
@@ -687,7 +683,7 @@ class AnalyticsService:
         """
         from datetime import datetime, timedelta as _timedelta
 
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         by_ticker: dict[str, list[Trade]] = {}
         for trade in all_trades:
             by_ticker.setdefault(trade.ticker, []).append(trade)
@@ -814,7 +810,7 @@ class AnalyticsService:
 
     def compare_to_benchmark(self, benchmark: str = "SPY") -> dict:
         benchmark = benchmark.upper()
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         if not all_trades:
             return {"error": "No trades found"}
 

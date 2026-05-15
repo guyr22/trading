@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createTrade } from "../api";
+import { createTrade, type TradePayload } from "../api";
 
 interface Props {
   action: "BUY" | "SELL";
@@ -10,6 +10,7 @@ interface Props {
   defaultPlatform?: string;
   onClose: () => void;
   onSuccess: () => void;
+  createFn?: (payload: TradePayload) => Promise<unknown>;
 }
 
 const calcFees = (plat: string, qty: string): string => {
@@ -21,7 +22,7 @@ const calcFees = (plat: string, qty: string): string => {
   return "";
 };
 
-export default function QuickTradeModal({ action, ticker, currentPrice, defaultPlatform = "", onClose, onSuccess }: Props) {
+export default function QuickTradeModal({ action, ticker, currentPrice, defaultPlatform = "", onClose, onSuccess, createFn = createTrade }: Props) {
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState(currentPrice.toString());
   const [platform, setPlatform] = useState(defaultPlatform);
@@ -33,7 +34,7 @@ export default function QuickTradeModal({ action, ticker, currentPrice, defaultP
     e.preventDefault();
     setError("");
     try {
-      await createTrade({
+      await createFn({
         action,
         ticker,
         quantity: parseFloat(quantity),

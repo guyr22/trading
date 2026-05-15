@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchPortfolio, fetchTrades, type PortfolioSummary, type Trade } from "../api";
+import { createIndexTrade, fetchIndexPortfolio, fetchIndexTrades, type PortfolioSummary, type Trade } from "../api";
 import QuickTradeModal from "./QuickTradeModal";
 
 const INDEX_TICKERS = ["VOO", "SPY", "QQQ", "IBIT", "ETHA"];
@@ -14,24 +14,22 @@ export default function Indexes() {
   const [modal, setModal] = useState<{ action: "BUY" | "SELL"; ticker: string; price: number } | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchPortfolio(), fetchTrades()])
+    Promise.all([fetchIndexPortfolio(), fetchIndexTrades()])
       .then(([p, t]) => { setPortfolio(p); setTrades(t); })
       .catch(console.error);
   }, []);
 
   const reload = () => {
-    Promise.all([fetchPortfolio(), fetchTrades()])
+    Promise.all([fetchIndexPortfolio(), fetchIndexTrades()])
       .then(([p, t]) => { setPortfolio(p); setTrades(t); })
       .catch(console.error);
   };
 
   if (!portfolio || !trades) return <p className="empty-msg">Loading...</p>;
 
-  const indexTrades = trades.filter(t => INDEX_TICKERS.includes(t.ticker));
-
   // Monthly summary: group BUY trades by month per ticker
   const monthlyMap: Record<string, Record<string, { shares: number; invested: number }>> = {};
-  for (const t of indexTrades) {
+  for (const t of trades) {
     if (t.action !== "BUY") continue;
     const month = t.executed_at.slice(0, 7);
     if (!monthlyMap[month]) monthlyMap[month] = {};
@@ -121,7 +119,7 @@ export default function Indexes() {
       )}
 
       <h2 style={{ marginBottom: "1rem" }}>Trade History</h2>
-      {indexTrades.length === 0 ? (
+      {trades.length === 0 ? (
         <p className="empty-msg">No index trades recorded yet.</p>
       ) : (
         <table>
@@ -137,7 +135,7 @@ export default function Indexes() {
             </tr>
           </thead>
           <tbody>
-            {indexTrades.map(t => (
+            {trades.map(t => (
               <tr key={t.id}>
                 <td>{new Date(t.executed_at).toLocaleDateString("en-GB")}</td>
                 <td><span className={`tag ${t.action === "BUY" ? "tag-buy" : "tag-sell"}`}>{t.action}</span></td>
@@ -158,6 +156,7 @@ export default function Indexes() {
           ticker={modal.ticker}
           currentPrice={modal.price}
           defaultPlatform="IBI"
+          createFn={createIndexTrade}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); reload(); }}
         />

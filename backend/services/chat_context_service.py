@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
-from core.config import INDEX_TICKERS_SET
 from domain.finance import ClosedLot, fifo_closed_lots
 from models import Trade
 from repositories.trade_repository import TradeRepository
@@ -91,7 +90,6 @@ class ChatContextService:
         # 1 DB fetch + 1 FIFO pass via build_summary
         summary = self._portfolio_service.build_summary()
         positions = summary.positions
-        non_index = [p for p in positions if p.ticker not in INDEX_TICKERS_SET]
 
         def _lev_note(p: PositionResponse) -> str:
             if p.leveraged_underlying and p.leverage_factor:
@@ -107,11 +105,10 @@ class ChatContextService:
             f"  {p.ticker}: {p.quantity} shares, avg cost ${p.avg_cost:.2f}, "
             f"current ${p.current_price:.2f}, market value ${p.market_value:.2f}, "
             f"unrealized P&L ${p.unrealized_pnl:.2f} ({p.unrealized_pnl_pct:.1f}%){_lev_note(p)}"
-            for p in non_index
+            for p in positions
         ) or "  No open positions"
 
-        # 1 DB fetch for non-index trades — used for fees, recent trades, and closed lots
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         total_fees = sum(float(t.fees or 0) for t in all_trades)
 
         recent_trades = sorted(all_trades, key=lambda t: (t.executed_at, t.id), reverse=True)[:20]

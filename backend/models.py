@@ -47,3 +47,20 @@ class Trade(Base):
     platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class IndexTrade(Base):
+    __tablename__ = "index_trades"
+    __table_args__ = (
+        Index("ix_index_trades_ticker_date_id", "ticker", "executed_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    action: Mapped[str] = mapped_column(SAEnum(TradeAction))
+    ticker: Mapped[str] = mapped_column(String(10), index=True)
+    quantity: Mapped[float] = mapped_column(Float)
+    price: Mapped[float] = mapped_column(Float)
+    fees: Mapped[Optional[float]] = mapped_column(Float, nullable=True, server_default="0")
+    platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    executed_at: Mapped[date] = mapped_column(Date, default=date.today)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

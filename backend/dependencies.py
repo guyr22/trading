@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from repositories.config_repository import ConfigRepository
 from repositories.etf_repository import EtfRepository
+from repositories.index_trade_repository import IndexTradeRepository
 from repositories.trade_repository import TradeRepository
 from services.analytics_service import AnalyticsService
 from services.chat_context_service import ChatContextService
@@ -15,6 +16,10 @@ from services.statistics_service import StatisticsService
 
 def get_trade_repo(db: Session = Depends(get_db)) -> TradeRepository:
     return TradeRepository(db)
+
+
+def get_index_trade_repo(db: Session = Depends(get_db)) -> IndexTradeRepository:
+    return IndexTradeRepository(db)
 
 
 def get_etf_repo(db: Session = Depends(get_db)) -> EtfRepository:

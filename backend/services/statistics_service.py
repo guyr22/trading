@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
 
-from core.config import INDEX_TICKERS_SET
 from domain.finance import ClosedLot, fifo_closed_lots
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
@@ -15,7 +14,7 @@ class StatisticsService:
         self._etf_repo = etf_repo
 
     def compute(self) -> PortfolioStatistics:
-        all_trades = self._trade_repo.get_excluding(INDEX_TICKERS_SET)
+        all_trades = self._trade_repo.get_all_ordered()
         etf_map = self._etf_repo.get_map()  # ticker -> LeveragedEtf
 
         def effective_ticker(t: str) -> str:

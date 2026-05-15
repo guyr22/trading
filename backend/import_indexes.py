@@ -5,10 +5,8 @@ Usage (Docker): docker compose exec backend python import_indexes.py
 """
 
 from datetime import datetime
-from database import SessionLocal, engine, Base
-from models import Trade, TradeAction
-
-Base.metadata.create_all(bind=engine)
+from database import SessionLocal
+from models import IndexTrade, TradeAction
 
 
 def parse_date(s: str):
@@ -52,13 +50,12 @@ def main():
     db = SessionLocal()
 
     # Remove any previously imported index trades to avoid duplicates
-    from sqlalchemy import and_
     index_tickers = {"VOO", "QQQ", "IBIT", "ETHA", "SPY"}
-    db.query(Trade).filter(Trade.ticker.in_(index_tickers)).delete(synchronize_session=False)
+    db.query(IndexTrade).filter(IndexTrade.ticker.in_(index_tickers)).delete(synchronize_session=False)
     db.commit()
 
     trades = [
-        Trade(
+        IndexTrade(
             action=TradeAction.BUY,
             ticker=ticker,
             quantity=shares,

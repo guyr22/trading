@@ -132,9 +132,34 @@ export async function fetchPortfolio(): Promise<PortfolioSummary> {
   return res.json();
 }
 
+export async function fetchIndexPortfolio(): Promise<PortfolioSummary> {
+  const res = await fetch(`${API}/index-portfolio`);
+  if (!res.ok) throw new Error("Failed to fetch index portfolio");
+  return res.json();
+}
+
 export async function fetchTrades(): Promise<Trade[]> {
   const res = await fetch(`${API}/trades`);
   if (!res.ok) throw new Error("Failed to fetch trades");
+  return res.json();
+}
+
+export async function fetchIndexTrades(): Promise<Trade[]> {
+  const res = await fetch(`${API}/index-trades`);
+  if (!res.ok) throw new Error("Failed to fetch index trades");
+  return res.json();
+}
+
+export async function createIndexTrade(payload: TradePayload): Promise<Trade> {
+  const res = await fetch(`${API}/index-trades`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Trade failed");
+  }
   return res.json();
 }
 

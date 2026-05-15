@@ -7,7 +7,6 @@ import QuickTradeModal from "./QuickTradeModal";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
-const INDEX_TICKERS = new Set(["VOO", "SPY", "QQQ", "IBIT", "ETHA"]);
 
 export default function Dashboard() {
   const [data, setData] = useState<PortfolioSummary | null>(null);
@@ -54,7 +53,7 @@ export default function Dashboard() {
 
       <h2>Current Holdings</h2>
 
-      {data.positions.filter(p => !INDEX_TICKERS.has(p.ticker)).length === 0 ? (
+      {data.positions.length === 0 ? (
         <p className="empty-msg">No open positions yet. Place a trade to get started.</p>
       ) : (
         <div className="table-wrap">
@@ -72,7 +71,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {data.positions.filter(p => !INDEX_TICKERS.has(p.ticker)).map((p: Position) => (
+              {data.positions.map((p: Position) => (
                 <tr key={p.ticker}>
                   <td>
                     <strong>{p.ticker}</strong>

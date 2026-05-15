@@ -2,6 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from dependencies import get_etf_repo, get_trade_repo
 from models import Trade, TradeAction
@@ -19,6 +20,12 @@ def create_trade(
     trade_repo: TradeRepository = Depends(get_trade_repo),
 ):
     ticker = trade_in.ticker.upper()
+
+    if ticker in INDEX_TICKERS_SET:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{ticker} is an index fund — use POST /api/index-trades instead",
+        )
 
     if trade_in.action == TradeAction.SELL:
         held = trade_repo.shares_held(ticker)
