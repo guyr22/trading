@@ -159,6 +159,7 @@ async def lifespan(app: FastAPI):
         logger.info("Auth tables pre-created before migration paths")
 
     # Read the current Alembic version (if any) to decide the migration path.
+    _HEAD = "a1b2c3d4e5f6"
     _current_version: str | None = None
     if "alembic_version" in existing_tables:
         with engine.connect() as _conn:
@@ -167,30 +168,39 @@ async def lifespan(app: FastAPI):
             ).scalar()
 
     if "alembic_version" not in existing_tables and existing_tables:
-        # Pre-existing DB created by create_all before Alembic was introduced.
-        # Stamp to head without running any migrations.
-        logger.info("Existing DB without Alembic tracking — stamping to head")
-        command.stamp(alembic_cfg, "head")
+        # Pre-existing DB without Alembic tracking — stamp by direct SQL insert.
+        logger.info("Existing DB without Alembic tracking — stamping to head directly")
+        with engine.begin() as _conn:
+            _conn.execute(text(
+                "INSERT INTO alembic_version (version_num) VALUES (:v) "
+                "ON CONFLICT DO NOTHING"
+            ), {"v": _HEAD})
 
     elif "trades" in existing_tables and "index_trades" not in existing_tables:
         # index_trades is missing on an existing DB (Railway upgrade path).
         logger.info("index_trades missing — creating directly and stamping to head")
         from models import IndexTrade
         IndexTrade.__table__.create(bind=engine, checkfirst=True)
-        command.stamp(alembic_cfg, "head")
-        logger.info("index_trades created and stamped")
-
-    elif _current_version == "e920117ef5cf":
-        # Auth migration (a1b2c3d4e5f6) hangs silently on Railway — bypass it.
-        # Update alembic_version directly (avoids the Alembic command that hangs).
-        # _ensure_auth_schema() below applies the actual DDL changes.
-        logger.info("Bypassing auth Alembic migration — updating version directly, schema applied via _ensure_auth_schema()")
         with engine.begin() as _conn:
             _conn.execute(text(
-                "UPDATE alembic_version SET version_num = 'a1b2c3d4e5f6' "
+                "UPDATE alembic_version SET version_num = :v"
+            ), {"v": _HEAD})
+        logger.info("index_trades created and version stamped")
+
+    elif _current_version == _HEAD:
+        # Already at head — nothing to do, skip all Alembic commands.
+        logger.info("Database already at head revision %s — skipping Alembic", _HEAD)
+
+    elif _current_version == "e920117ef5cf":
+        # Auth migration hangs silently on Railway — bypass via direct SQL.
+        # _ensure_auth_schema() below applies the actual DDL changes.
+        logger.info("Bypassing auth Alembic migration — updating version directly")
+        with engine.begin() as _conn:
+            _conn.execute(text(
+                "UPDATE alembic_version SET version_num = :v "
                 "WHERE version_num = 'e920117ef5cf'"
-            ))
-        logger.info("Alembic version updated to a1b2c3d4e5f6")
+            ), {"v": _HEAD})
+        logger.info("Alembic version updated to %s", _HEAD)
 
     else:
         try:
