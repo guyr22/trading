@@ -182,9 +182,15 @@ async def lifespan(app: FastAPI):
 
     elif _current_version == "e920117ef5cf":
         # Auth migration (a1b2c3d4e5f6) hangs silently on Railway — bypass it.
-        # _ensure_auth_schema() below will apply the actual DDL changes.
-        logger.info("Bypassing auth Alembic migration — stamping to head, schema applied via _ensure_auth_schema()")
-        command.stamp(alembic_cfg, "head")
+        # Update alembic_version directly (avoids the Alembic command that hangs).
+        # _ensure_auth_schema() below applies the actual DDL changes.
+        logger.info("Bypassing auth Alembic migration — updating version directly, schema applied via _ensure_auth_schema()")
+        with engine.begin() as _conn:
+            _conn.execute(text(
+                "UPDATE alembic_version SET version_num = 'a1b2c3d4e5f6' "
+                "WHERE version_num = 'e920117ef5cf'"
+            ))
+        logger.info("Alembic version updated to a1b2c3d4e5f6")
 
     else:
         try:
