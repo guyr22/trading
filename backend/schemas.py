@@ -113,21 +113,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    provider: Literal["claude", "openai", "gemini", "gemini25"] = "claude"
-
-
-class ChatResponse(BaseModel):
-    reply: str
-
-
-class TechnicalChatRequest(BaseModel):
-    messages: list[ChatMessage]
-    provider: str = "claude"
-    images: list[str] = []  # data URLs (data:image/png;base64,...)
-
-
-class AppConfigUpdate(BaseModel):
-    value: str
+    provider: Literal["gemini", "gemini25"] = "gemini"
 
 
 class PortfolioStatistics(BaseModel):

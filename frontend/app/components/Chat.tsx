@@ -6,9 +6,7 @@ import remarkGfm from "remark-gfm";
 import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, type ChatMessage } from "../api";
 
 const PROVIDERS = [
-  { value: "claude", label: "Claude (Haiku)", color: "#d97706" },
-  { value: "openai", label: "ChatGPT (4o mini)", color: "#10a37f" },
-  { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
+  { value: "gemini", label: "Gemini 2 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
 ];
 

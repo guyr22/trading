@@ -230,6 +230,12 @@ async def lifespan(app: FastAPI):
         raise
 
     with SessionLocal() as db:
+        deleted = db.execute(text("DELETE FROM app_configs WHERE key = 'ta_system_prompt'"))
+        if deleted.rowcount:
+            db.commit()
+            logger.info("Removed ta_system_prompt from app_configs")
+
+    with SessionLocal() as db:
         etf_repo = EtfRepository(db)
         for entry in SEED_LEVERAGED_ETFS:
             if not etf_repo.find_by_ticker(entry["ticker"]):

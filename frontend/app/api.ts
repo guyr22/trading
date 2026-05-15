@@ -261,30 +261,6 @@ export async function sendChatMessage(
   }
 }
 
-export async function fetchTaPrompt(): Promise<string> {
-  const res = await fetch(`${API}/config/ta-prompt`, OPTS);
-  if (!res.ok) throw new Error("Failed to fetch TA prompt");
-  const data = await res.json();
-  return data.value;
-}
-
-export async function saveTaPrompt(value: string): Promise<void> {
-  const res = await fetch(`${API}/config/ta-prompt`, {
-    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }),
-  });
-  if (!res.ok) throw new Error("Failed to save TA prompt");
-}
-
-export async function sendTechnicalChatMessage(
-  messages: ChatMessage[],
-  provider: string,
-  onChunk: (text: string) => void,
-  images?: string[],
-): Promise<void> {
-  const res = await fetch(`${API}/chat/technical`, json({ messages, provider, images: images ?? [] }));
-  await _readNdjsonStream(res, onChunk);
-}
-
 export async function fetchLeveragedEtfs(): Promise<LeveragedEtf[]> {
   const res = await fetch(`${API}/leveraged-etfs`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch leveraged ETFs");

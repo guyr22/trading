@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from auth.dependencies import get_current_user
 from database import get_db
 from models import User
-from repositories.config_repository import ConfigRepository
 from repositories.etf_repository import EtfRepository
 from repositories.index_trade_repository import IndexTradeRepository
 from repositories.trade_repository import TradeRepository
@@ -32,10 +31,6 @@ def get_index_trade_repo(
 
 def get_etf_repo(db: Session = Depends(get_db)) -> EtfRepository:
     return EtfRepository(db)
-
-
-def get_config_repo(db: Session = Depends(get_db)) -> ConfigRepository:
-    return ConfigRepository(db)
 
 
 def get_portfolio_service(
