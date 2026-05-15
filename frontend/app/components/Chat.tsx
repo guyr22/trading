@@ -3,16 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, type ChatMessage } from "../api";
+import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, fetchConversations, upsertConversation, deleteConversationApi, type ChatMessage, type Conversation } from "../api";
 import { useAuth } from "../contexts/AuthContext";
 
 const PROVIDERS = [
   { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
 ];
-
-const storageKey = (userId: number) => `portfolio_chat_history_${userId}`;
-const MAX_HISTORY = 30;
 
 const QUESTION_BANK: { category: string; questions: string[] }[] = [
   {
@@ -84,28 +81,6 @@ const QUESTION_BANK: { category: string; questions: string[] }[] = [
   },
 ];
 
-interface Conversation {
-  id: string;
-  createdAt: number;
-  title: string;
-  messages: ChatMessage[];
-  provider: string;
-}
-
-function loadHistory(userId: number): Conversation[] {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey(userId)) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(history: Conversation[], userId: number) {
-  try {
-    localStorage.setItem(storageKey(userId), JSON.stringify(history.slice(0, MAX_HISTORY)));
-  } catch {}
-}
-
 function makeTitle(messages: ChatMessage[]) {
   const first = messages.find(m => m.role === "user")?.content ?? "New conversation";
   return first.length > 60 ? first.slice(0, 60) + "…" : first;
@@ -113,7 +88,6 @@ function makeTitle(messages: ChatMessage[]) {
 
 export default function Chat() {
   const { user } = useAuth();
-  const userId = user?.id ?? 0;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -132,10 +106,10 @@ export default function Chat() {
   const [insightDismissed, setInsightDismissed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load history on mount (always start a new conversation)
+  // Load conversation history from API on mount
   useEffect(() => {
-    if (userId) setHistory(loadHistory(userId));
-  }, [userId]);
+    fetchConversations().then(setHistory).catch(() => {});
+  }, []);
 
   // Fetch behavioral insights on mount for the alert banner
   useEffect(() => {
@@ -218,17 +192,6 @@ export default function Chat() {
     buildChips();
   }, []);
 
-  // Persist current conversation whenever messages change
-  useEffect(() => {
-    if (messages.length === 0) return;
-    const updated: Conversation = { id: convId, createdAt: Date.now(), title: makeTitle(messages), messages, provider };
-    const h = loadHistory(userId);
-    const idx = h.findIndex(c => c.id === convId);
-    if (idx >= 0) h[idx] = updated; else h.unshift(updated);
-    saveHistory(h, userId);
-    setHistory(h);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -253,8 +216,8 @@ export default function Chat() {
   const deleteConversation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const h = history.filter(c => c.id !== id);
-    saveHistory(h, userId);
     setHistory(h);
+    deleteConversationApi(id).catch(() => {});
     if (id === convId) startNewChat();
   };
 
@@ -284,7 +247,13 @@ export default function Chat() {
           setToolStatus(labels[toolName] ?? `Running ${toolName}...`);
         },
       );
-      setMessages([...next, { role: "assistant", content: reply }]);
+      const finalMessages: ChatMessage[] = [...next, { role: "assistant", content: reply }];
+      setMessages(finalMessages);
+      const title = makeTitle(finalMessages);
+      upsertConversation(convId, title, finalMessages, provider)
+        .then(() => fetchConversations())
+        .then(setHistory)
+        .catch(() => {});
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -292,7 +261,7 @@ export default function Chat() {
       setToolStatus("");
       setLoading(false);
     }
-  }, [input, loading, messages, provider]);
+  }, [input, loading, messages, provider, convId]);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -404,7 +373,7 @@ export default function Chat() {
               <div style={{ overflow: "hidden" }}>
                 <div style={{ fontSize: "0.85rem", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{conv.title}</div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  {new Date(conv.createdAt).toLocaleDateString()} · {conv.messages.length} messages
+                  {new Date(conv.created_at).toLocaleDateString()} · {conv.messages.length} messages
                 </div>
               </div>
               <button

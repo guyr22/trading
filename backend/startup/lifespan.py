@@ -92,6 +92,16 @@ def _ensure_auth_schema() -> None:
             logger.info("Added user_id column to index_trades")
 
 
+def _ensure_chat_schema() -> None:
+    """Create chat_conversations table if missing (idempotent)."""
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(engine)
+    if "chat_conversations" not in inspector.get_table_names():
+        from models import ChatConversation
+        ChatConversation.__table__.create(bind=engine, checkfirst=True)
+        logger.info("Created chat_conversations table")
+
+
 def _ensure_admin_user() -> None:
     """Create the admin user from env vars on first startup and assign orphaned trades to them."""
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
@@ -159,7 +169,7 @@ async def lifespan(app: FastAPI):
         logger.info("Auth tables pre-created before migration paths")
 
     # Read the current Alembic version (if any) to decide the migration path.
-    _HEAD = "a1b2c3d4e5f6"
+    _HEAD = "b2c3d4e5f6a7"
     _current_version: str | None = None
     if "alembic_version" in existing_tables:
         with engine.connect() as _conn:
@@ -191,14 +201,13 @@ async def lifespan(app: FastAPI):
         # Already at head — nothing to do, skip all Alembic commands.
         logger.info("Database already at head revision %s — skipping Alembic", _HEAD)
 
-    elif _current_version == "e920117ef5cf":
-        # Auth migration hangs silently on Railway — bypass via direct SQL.
-        # _ensure_auth_schema() below applies the actual DDL changes.
-        logger.info("Bypassing auth Alembic migration — updating version directly")
+    elif _current_version in ("e920117ef5cf", "a1b2c3d4e5f6"):
+        # Known older versions — bypass hanging Alembic migrations, stamp to head directly.
+        # _ensure_auth_schema() and _ensure_chat_schema() apply the actual DDL.
+        logger.info("Bypassing Alembic migration from %s — updating version directly", _current_version)
         with engine.begin() as _conn:
             _conn.execute(text(
-                "UPDATE alembic_version SET version_num = :v "
-                "WHERE version_num = 'e920117ef5cf'"
+                "UPDATE alembic_version SET version_num = :v"
             ), {"v": _HEAD})
         logger.info("Alembic version updated to %s", _HEAD)
 
@@ -215,6 +224,12 @@ async def lifespan(app: FastAPI):
         _ensure_auth_schema()
     except Exception:
         logger.error("Auth schema setup failed:\n%s", traceback.format_exc())
+        raise
+
+    try:
+        _ensure_chat_schema()
+    except Exception:
+        logger.error("Chat schema setup failed:\n%s", traceback.format_exc())
         raise
 
     try:

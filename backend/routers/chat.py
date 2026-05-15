@@ -1,18 +1,107 @@
 import time
+from datetime import datetime
+from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from auth.dependencies import get_current_user
 from chat.provider_factory import get_provider
 from chat.tool_executor import ToolExecutor
 from core.logging import get_logger
+from database import get_db
 from dependencies import get_analytics_service, get_chat_context_service
+from models import ChatConversation, User
 from schemas import ChatRequest
 from services.analytics_service import AnalyticsService
 from services.chat_context_service import ChatContextService
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+_MAX_CONVERSATIONS = 30
+
+
+class ConversationUpsert(BaseModel):
+    title: str
+    messages: list[Any]
+    provider: str = "gemini"
+
+
+@router.get("/api/chat/conversations")
+def list_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = (
+        db.query(ChatConversation)
+        .filter(ChatConversation.user_id == current_user.id)
+        .order_by(ChatConversation.updated_at.desc())
+        .limit(_MAX_CONVERSATIONS)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "messages": r.messages,
+            "provider": r.provider,
+            "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.put("/api/chat/conversations/{conv_id}", status_code=200)
+def upsert_conversation(
+    conv_id: str,
+    body: ConversationUpsert,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = db.query(ChatConversation).filter(
+        ChatConversation.id == conv_id,
+        ChatConversation.user_id == current_user.id,
+    ).first()
+
+    now = datetime.now()
+    if row:
+        row.title = body.title
+        row.messages = body.messages
+        row.provider = body.provider
+        row.updated_at = now
+    else:
+        row = ChatConversation(
+            id=conv_id,
+            user_id=current_user.id,
+            title=body.title,
+            messages=body.messages,
+            provider=body.provider,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/api/chat/conversations/{conv_id}", status_code=204)
+def delete_conversation(
+    conv_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = db.query(ChatConversation).filter(
+        ChatConversation.id == conv_id,
+        ChatConversation.user_id == current_user.id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/api/chat/insights")

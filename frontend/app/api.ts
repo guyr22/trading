@@ -202,6 +202,32 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  provider: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchConversations(): Promise<Conversation[]> {
+  const res = await fetch(`${API}/chat/conversations`, OPTS);
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  return res.json();
+}
+
+export async function upsertConversation(id: string, title: string, messages: ChatMessage[], provider: string): Promise<void> {
+  await fetch(`${API}/chat/conversations/${id}`, {
+    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, messages, provider }),
+  });
+}
+
+export async function deleteConversationApi(id: string): Promise<void> {
+  await fetch(`${API}/chat/conversations/${id}`, { ...OPTS, method: "DELETE" });
+}
+
 async function _readNdjsonStream(res: Response, onChunk: (text: string) => void): Promise<void> {
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;

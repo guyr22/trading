@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Date, DateTime, Enum as SAEnum, func
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Date, DateTime, Enum as SAEnum, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -89,3 +89,18 @@ class IndexTrade(Base):
     platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
+
+
+class ChatConversation(Base):
+    __tablename__ = "chat_conversations"
+    __table_args__ = (
+        Index("ix_chat_conv_user_updated", "user_id", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    messages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, default="gemini")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now(), onupdate=lambda: datetime.now())
