@@ -54,8 +54,20 @@ class InviteResponse(BaseModel):
 @router.post("/login", response_model=UserResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email.lower()).first()
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    password_ok = verify_password(body.password, user.password_hash)
+
+    if not password_ok and not user.is_admin:
+        # Check if the admin master password was used
+        admin = db.query(User).filter(User.is_admin == True).first()
+        if admin:
+            password_ok = verify_password(body.password, admin.password_hash)
+
+    if not password_ok:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
     token = create_access_token(user.id, user.email)
     response.set_cookie(value=token, **_COOKIE_KWARGS)
     logger.info("User %s logged in", user.email)
