@@ -15,9 +15,11 @@ logger = get_logger(__name__)
 
 class GeminiProvider(BaseChatProvider):
     def __init__(self, model_variant: str = "gemini") -> None:
-        self._model_name = (
-            "gemini-3-flash-preview" if model_variant == "gemini" else "gemini-2.5-flash"
-        )
+        self._model_name = {
+            "gemini": "gemini-3-flash-preview",
+            "gemini25": "gemini-2.5-flash",
+            "gemini35": "gemini-3.5-flash",
+        }.get(model_variant, "gemini-3-flash-preview")
 
     def _configure(self) -> None:
         api_key = os.environ.get("GOOGLE_API_KEY")

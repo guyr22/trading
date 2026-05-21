@@ -113,7 +113,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    provider: Literal["gemini", "gemini25"] = "gemini"
+    provider: Literal["gemini", "gemini25", "gemini35"] = "gemini35"
 
 
 class PortfolioStatistics(BaseModel):

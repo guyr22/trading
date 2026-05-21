@@ -11,6 +11,7 @@ _PROVIDERS: dict[str, BaseChatProvider] = {
     "openai":   OpenAIProvider(),
     "gemini":   GeminiProvider("gemini"),
     "gemini25": GeminiProvider("gemini25"),
+    "gemini35": GeminiProvider("gemini35"),
 }
 
 

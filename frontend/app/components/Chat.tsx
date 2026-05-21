@@ -7,6 +7,7 @@ import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, fetchC
 import { useAuth } from "../contexts/AuthContext";
 
 const PROVIDERS = [
+  { value: "gemini35", label: "Gemini 3.5 Flash", color: "#4285f4" },
   { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
 ];
@@ -91,7 +92,7 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [provider, setProvider] = useState("gemini");
+  const [provider, setProvider] = useState("gemini35");
   const [loading, setLoading] = useState(false);
   const [streamingReply, setStreamingReply] = useState("");
   const [toolStatus, setToolStatus] = useState("");
