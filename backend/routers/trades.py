@@ -30,15 +30,19 @@ def create_trade(
         )
 
     if trade_in.action == TradeAction.SELL:
-        held = trade_repo.shares_held(ticker)
+        held = trade_repo.shares_held_on_platform(ticker, trade_in.platform)
         if held < trade_in.quantity:
+            platform_label = trade_in.platform or "unspecified platform"
             logger.warning(
-                "Rejected sell: %s shares of %s requested, only %.4f held",
-                trade_in.quantity, ticker, held,
+                "Rejected sell: %s shares of %s on %s requested, only %.4f held",
+                trade_in.quantity, ticker, platform_label, held,
             )
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot sell {trade_in.quantity} shares of {ticker} — only {held} held",
+                detail=(
+                    f"Cannot sell {trade_in.quantity} shares of {ticker} on "
+                    f"{platform_label} — only {held} held there"
+                ),
             )
 
     trade = Trade(
@@ -97,6 +101,7 @@ def update_trade(
     effective_ticker = updates.get("ticker", trade.ticker)
     effective_quantity = updates.get("quantity", trade.quantity)
     effective_executed_at = updates.get("executed_at", trade.executed_at)
+    effective_platform = updates.get("platform", trade.platform)
 
     if trade_repo.has_later_opposite_trade(
         effective_ticker, effective_action, effective_executed_at, trade.id
@@ -115,17 +120,20 @@ def update_trade(
         )
 
     if effective_action == TradeAction.SELL:
-        held = trade_repo.shares_held_excluding(effective_ticker, trade_id)
+        held = trade_repo.shares_held_on_platform_excluding(
+            effective_ticker, effective_platform, trade_id
+        )
         if held < effective_quantity:
+            platform_label = effective_platform or "unspecified platform"
             logger.warning(
-                "Rejected edit of trade %s: sell %s shares of %s but only %.4f held (excluding self)",
-                trade_id, effective_quantity, effective_ticker, held,
+                "Rejected edit of trade %s: sell %s shares of %s on %s but only %.4f held (excluding self)",
+                trade_id, effective_quantity, effective_ticker, platform_label, held,
             )
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Cannot sell {effective_quantity} shares of {effective_ticker} "
-                    f"— only {held} held (excluding this trade)"
+                    f"Cannot sell {effective_quantity} shares of {effective_ticker} on "
+                    f"{platform_label} — only {held} held there (excluding this trade)"
                 ),
             )
 

@@ -74,6 +74,22 @@ class TradeRepository:
         ).filter(Trade.user_id == self._user_id, Trade.ticker == ticker).scalar()
         return float(result)
 
+    def shares_held_on_platform(self, ticker: str, platform: str | None) -> float:
+        platform_filter = Trade.platform.is_(None) if platform is None else Trade.platform == platform
+        result = self._db.query(
+            func.coalesce(func.sum(
+                case(
+                    (Trade.action == TradeAction.BUY, Trade.quantity),
+                    else_=-Trade.quantity,
+                )
+            ), 0)
+        ).filter(
+            Trade.user_id == self._user_id,
+            Trade.ticker == ticker,
+            platform_filter,
+        ).scalar()
+        return float(result)
+
     def get_count_and_max_id(self) -> tuple[int, int]:
         count, max_id = self._db.query(func.count(Trade.id), func.max(Trade.id)).filter(
             Trade.user_id == self._user_id
@@ -114,6 +130,25 @@ class TradeRepository:
         ).filter(
             Trade.user_id == self._user_id,
             Trade.ticker == ticker,
+            Trade.id != exclude_id,
+        ).scalar()
+        return max(float(result), 0.0)
+
+    def shares_held_on_platform_excluding(
+        self, ticker: str, platform: str | None, exclude_id: int
+    ) -> float:
+        platform_filter = Trade.platform.is_(None) if platform is None else Trade.platform == platform
+        result = self._db.query(
+            func.coalesce(func.sum(
+                case(
+                    (Trade.action == TradeAction.BUY, Trade.quantity),
+                    else_=-Trade.quantity,
+                )
+            ), 0)
+        ).filter(
+            Trade.user_id == self._user_id,
+            Trade.ticker == ticker,
+            platform_filter,
             Trade.id != exclude_id,
         ).scalar()
         return max(float(result), 0.0)

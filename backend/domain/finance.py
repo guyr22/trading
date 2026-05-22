@@ -1,6 +1,7 @@
 """Pure FIFO accounting engine — no framework dependencies."""
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Optional
 
 from models import Trade, TradeAction
 
@@ -15,6 +16,7 @@ class ClosedLot:
     cost_basis: float = field(default=0.0)
     avg_buy_price: float = field(default=0.0)
     avg_sell_price: float = field(default=0.0)
+    platform: Optional[str] = field(default=None)
 
 
 @dataclass
@@ -27,11 +29,13 @@ class FifoResult:
 def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
     """Single FIFO pass — returns avg cost, realized P&L, and all closed lots.
 
-    Handles both long and short positions. Fees are deducted proportionally
-    from each leg as lots are consumed.
+    Lots are partitioned by platform: buys and sells on one platform never
+    match against lots on another. NULL platform forms its own bucket so
+    legacy trades stay internally consistent. Handles long and short
+    positions; fees are deducted proportionally per share as lots consume.
     """
-    long_lots: list[list] = []   # [qty, price, fps, open_date]
-    short_lots: list[list] = []
+    long_by_platform: dict[Optional[str], list[list]] = {}
+    short_by_platform: dict[Optional[str], list[list]] = {}
     closed: list[ClosedLot] = []
     realized = 0.0
 
@@ -40,6 +44,10 @@ def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
         price = float(t.price)
         fps = float(t.fees or 0.0) / qty if qty else 0.0
         tdate = t.executed_at
+        platform = t.platform
+
+        long_lots = long_by_platform.setdefault(platform, [])
+        short_lots = short_by_platform.setdefault(platform, [])
 
         if t.action == TradeAction.BUY:
             remaining = qty
@@ -48,7 +56,7 @@ def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
                 consumed = min(lot_qty, remaining)
                 pnl = (lot_price - price) * consumed - lot_fps * consumed - fps * consumed
                 realized += pnl
-                closed.append(ClosedLot(ticker, pnl, lot_date, tdate, consumed, lot_price * consumed, avg_buy_price=price, avg_sell_price=lot_price))
+                closed.append(ClosedLot(ticker, pnl, lot_date, tdate, consumed, lot_price * consumed, avg_buy_price=price, avg_sell_price=lot_price, platform=platform))
                 short_lots[0][0] -= consumed
                 remaining -= consumed
                 if short_lots[0][0] == 0:
@@ -62,7 +70,7 @@ def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
                 consumed = min(lot_qty, remaining)
                 pnl = (price - lot_price) * consumed - lot_fps * consumed - fps * consumed
                 realized += pnl
-                closed.append(ClosedLot(ticker, pnl, lot_date, tdate, consumed, lot_price * consumed, avg_buy_price=lot_price, avg_sell_price=price))
+                closed.append(ClosedLot(ticker, pnl, lot_date, tdate, consumed, lot_price * consumed, avg_buy_price=lot_price, avg_sell_price=price, platform=platform))
                 long_lots[0][0] -= consumed
                 remaining -= consumed
                 if long_lots[0][0] == 0:
@@ -70,14 +78,16 @@ def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
             if remaining > 0:
                 short_lots.append([remaining, price, fps, tdate])
 
-    long_qty = sum(lot[0] for lot in long_lots)
-    short_qty = sum(lot[0] for lot in short_lots)
+    all_long_lots = [lot for lots in long_by_platform.values() for lot in lots]
+    all_short_lots = [lot for lots in short_by_platform.values() for lot in lots]
+    long_qty = sum(lot[0] for lot in all_long_lots)
+    short_qty = sum(lot[0] for lot in all_short_lots)
     net_qty = long_qty - short_qty
 
     if net_qty > 0:
-        avg_cost = sum(lot[0] * lot[1] for lot in long_lots) / long_qty
+        avg_cost = sum(lot[0] * lot[1] for lot in all_long_lots) / long_qty
     elif net_qty < 0:
-        avg_cost = sum(lot[0] * lot[1] for lot in short_lots) / short_qty
+        avg_cost = sum(lot[0] * lot[1] for lot in all_short_lots) / short_qty
     else:
         avg_cost = 0.0
 
