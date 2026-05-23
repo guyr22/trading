@@ -6,7 +6,7 @@ from jose import JWTError, jwt
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-me-in-production-please-set-JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7
 
 
 def hash_password(password: str) -> str:

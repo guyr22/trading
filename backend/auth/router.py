@@ -23,7 +23,7 @@ _COOKIE_KWARGS = dict(
     httponly=True,
     secure=SECURE_COOKIES,
     samesite="lax",
-    max_age=86400,
+    max_age=86400 * 7,
     path="/",
 )
 

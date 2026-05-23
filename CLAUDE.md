@@ -4,26 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the Application
 
-**Docker (recommended):**
-```bash
-docker compose up --build
-# On first run, import trade history:
-docker compose exec backend python import_trades.py
-```
-
-**After making any code changes, rebuild only the relevant service:**
-```bash
-# Backend changes only:
-docker compose up --build backend -d
-
-# Frontend changes only:
-docker compose up --build frontend -d
-
-# Both changed:
-docker compose up --build backend frontend -d
-```
-Claude must run the appropriate rebuild command automatically after every code change without waiting to be asked.
-
 **Local development:**
 ```bash
 # Backend (terminal 1)
@@ -140,3 +120,5 @@ python -m alembic upgrade head
 ```
 
 ### Never insert, modify, or leave test/placeholder data in the database. Only the user decides what goes into the DB.
+
+### Always commit and push changes with a detailed commit message after completing a task. The message should explain *what* changed and *why* (motivation, context, side effects), not just a one-line summary. Push to `origin/main` so Railway picks up the deploy.
