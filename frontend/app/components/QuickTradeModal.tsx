@@ -8,10 +8,13 @@ interface Props {
   ticker: string;
   currentPrice: number;
   defaultPlatform?: string;
+  sharesHeld?: number;
   onClose: () => void;
   onSuccess: () => void;
   createFn?: (payload: TradePayload) => Promise<unknown>;
 }
+
+const fmtQty = (n: number): string => (n % 1 === 0 ? n.toString() : n.toFixed(4).replace(/\.?0+$/, ""));
 
 const calcFees = (plat: string, qty: string): string => {
   if (plat === "IBI") return "7.50";
@@ -22,7 +25,7 @@ const calcFees = (plat: string, qty: string): string => {
   return "";
 };
 
-export default function QuickTradeModal({ action, ticker, currentPrice, defaultPlatform = "", onClose, onSuccess, createFn = createTrade }: Props) {
+export default function QuickTradeModal({ action, ticker, currentPrice, defaultPlatform = "", sharesHeld, onClose, onSuccess, createFn = createTrade }: Props) {
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState(currentPrice.toString());
   const [platform, setPlatform] = useState(defaultPlatform);
@@ -58,7 +61,19 @@ export default function QuickTradeModal({ action, ticker, currentPrice, defaultP
         </div>
         <form onSubmit={handleSubmit}>
           <div className="form-row">
-            <label>Quantity</label>
+            <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Quantity</span>
+              {action === "SELL" && sharesHeld != null && sharesHeld > 0 && (
+                <button
+                  type="button"
+                  className="btn-quick btn-quick-sell"
+                  onClick={() => setQuantity(fmtQty(sharesHeld))}
+                  title={`Sell all ${fmtQty(sharesHeld)} shares held`}
+                >
+                  All ({fmtQty(sharesHeld)})
+                </button>
+              )}
+            </label>
             <input type="number" min="0.0001" step="any" required value={quantity} onChange={(e) => setQuantity(e.target.value)} autoFocus />
           </div>
           <div className="form-row">

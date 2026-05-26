@@ -10,7 +10,7 @@ const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
 
 export default function Dashboard() {
   const [data, setData] = useState<PortfolioSummary | null>(null);
-  const [modal, setModal] = useState<{ action: "BUY" | "SELL"; ticker: string; price: number } | null>(null);
+  const [modal, setModal] = useState<{ action: "BUY" | "SELL"; ticker: string; price: number; quantity: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -97,8 +97,8 @@ export default function Dashboard() {
                   <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
                   <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>
                   <td className="quick-actions">
-                    <button className="btn-quick btn-quick-buy" onClick={() => setModal({ action: "BUY", ticker: p.ticker, price: p.current_price })}>Buy</button>
-                    <button className="btn-quick btn-quick-sell" onClick={() => setModal({ action: "SELL", ticker: p.ticker, price: p.current_price })}>Sell</button>
+                    <button className="btn-quick btn-quick-buy" onClick={() => setModal({ action: "BUY", ticker: p.ticker, price: p.current_price, quantity: p.quantity })}>Buy</button>
+                    <button className="btn-quick btn-quick-sell" onClick={() => setModal({ action: "SELL", ticker: p.ticker, price: p.current_price, quantity: p.quantity })}>Sell</button>
                   </td>
                 </tr>
               ))}
@@ -112,6 +112,7 @@ export default function Dashboard() {
           action={modal.action}
           ticker={modal.ticker}
           currentPrice={modal.price}
+          sharesHeld={modal.quantity}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); load(); }}
         />
