@@ -332,6 +332,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .modal .form-row { margin-bottom: 0.75rem; }
 .modal .btn-primary { width: 100%; }
 
+/* Hide number input spinner arrows in the modal */
+.modal input[type="number"]::-webkit-outer-spin-button,
+.modal input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.modal input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .btn-modal-buy { background: var(--green); color: #000; }
 .btn-modal-sell { background: var(--red); color: #000; }
 
