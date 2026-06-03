@@ -57,29 +57,37 @@ class GeminiProvider(BaseChatProvider):
         ]
         chat = model.start_chat(history=history)
 
-        def _send(payload, round_num):
+        # Stream one model turn: yield text deltas live (token-by-token) and return the
+        # list of function calls the model requested this turn (empty = final answer).
+        def _stream_turn(payload, round_num):
             logger.info("Gemini API call  round=%d", round_num)
             t = time.perf_counter()
-            resp = chat.send_message(payload)
+            resp = chat.send_message(payload, stream=True)
+            fn_calls = []
+            for chunk in resp:
+                for p in chunk.candidates[0].content.parts:
+                    fc = getattr(p, "function_call", None)
+                    if fc and fc.name:
+                        fn_calls.append(fc)
+                        continue
+                    txt = getattr(p, "text", "")
+                    if txt:
+                        yield json.dumps({"t": txt}) + "\n"
+            resp.resolve()  # finalize streamed turn so history is updated for the next round
             logger.info("Gemini API response  round=%d  %.2fs", round_num, time.perf_counter() - t)
-            return resp
+            return fn_calls
 
-        try:
-            response = _send(messages[-1]["content"], 0)
-        except gax.ResourceExhausted as e:
-            logger.warning("Gemini quota exhausted: %s", e)
-            yield json.dumps({"error": _quota_message(e)}) + "\n"
-            return
-
+        payload = messages[-1]["content"]
         for round_num in range(MAX_TOOL_ROUNDS):
-            fn_calls = [
-                p.function_call
-                for p in response.candidates[0].content.parts
-                if hasattr(p, "function_call") and p.function_call.name
-            ]
-            if not fn_calls:
-                yield json.dumps({"t": response.text}) + "\n"
+            try:
+                fn_calls = yield from _stream_turn(payload, round_num)
+            except gax.ResourceExhausted as e:
+                logger.warning("Gemini quota exhausted: %s", e)
+                yield json.dumps({"error": _quota_message(e)}) + "\n"
                 return
+
+            if not fn_calls:
+                return  # final answer fully streamed
 
             tool_responses = []
             for fc in fn_calls:
@@ -90,26 +98,23 @@ class GeminiProvider(BaseChatProvider):
                 tool_responses.append({
                     "function_response": {"name": fc.name, "response": {"result": result}}
                 })
-            try:
-                response = _send(tool_responses, round_num + 1)
-            except gax.ResourceExhausted as e:
-                logger.warning("Gemini quota exhausted mid-tool-loop: %s", e)
-                yield json.dumps({"error": _quota_message(e)}) + "\n"
-                return
+            payload = tool_responses
 
         # Tool budget exhausted: ask once more with tools disabled so the user still
-        # gets a written answer from the data already gathered, instead of an error.
+        # gets a written answer (streamed) from the data already gathered, not an error.
         logger.info("Gemini tool loop hit MAX_TOOL_ROUNDS — final answer without tools")
         try:
             final_model = genai.GenerativeModel(
                 model_name=self._model_name, system_instruction=system_prompt
             )
             final_chat = final_model.start_chat(history=chat.history)
-            final = final_chat.send_message(
+            for chunk in final_chat.send_message(
                 "Answer the user's question now using the data already gathered above. "
-                "Do not request any more tools."
-            )
-            yield json.dumps({"t": final.text}) + "\n"
+                "Do not request any more tools.",
+                stream=True,
+            ):
+                if getattr(chunk, "text", ""):
+                    yield json.dumps({"t": chunk.text}) + "\n"
         except gax.ResourceExhausted as e:
             yield json.dumps({"error": _quota_message(e)}) + "\n"
         except Exception as e:

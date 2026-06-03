@@ -33,13 +33,17 @@ class ClaudeProvider(BaseChatProvider):
             logger.info("Claude API call  round=%d  msgs=%d", round_num, len(msgs))
             t0 = time.perf_counter()
             try:
-                response = client.messages.create(
+                with client.messages.stream(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=2048,
                     system=system_prompt,
                     messages=msgs,
                     tools=TOOL_REGISTRY.claude_format,
-                )
+                ) as stream:
+                    # Forward the model's prose token-by-token as it is generated.
+                    for text in stream.text_stream:
+                        yield json.dumps({"t": text}) + "\n"
+                    response = stream.get_final_message()
             except anthropic.RateLimitError:
                 yield json.dumps({"error": "Claude rate limit reached — try again in a moment"}) + "\n"
                 return
@@ -67,15 +71,13 @@ class ClaudeProvider(BaseChatProvider):
                         })
                 msgs.append({"role": "user", "content": tool_results})
             else:
-                text = "".join(b.text for b in response.content if hasattr(b, "text"))
-                yield json.dumps({"t": text}) + "\n"
-                return
+                return  # final answer already streamed token-by-token
 
         # Tool budget exhausted: one final call with tools disabled so the user still
         # gets a written answer from the data already gathered, instead of an error.
         logger.info("Claude tool loop hit MAX_TOOL_ROUNDS — final answer without tools")
         try:
-            final = client.messages.create(
+            with client.messages.stream(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
                 system=system_prompt,
@@ -83,9 +85,9 @@ class ClaudeProvider(BaseChatProvider):
                     "role": "user",
                     "content": "Answer my question now using the data already gathered. Do not call any more tools.",
                 }],
-            )
-            text = "".join(b.text for b in final.content if hasattr(b, "text"))
-            yield json.dumps({"t": text}) + "\n"
+            ) as stream:
+                for text in stream.text_stream:
+                    yield json.dumps({"t": text}) + "\n"
         except anthropic.APIError as e:
             yield json.dumps({"error": f"Claude error: {e.message}"}) + "\n"
 

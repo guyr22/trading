@@ -240,10 +240,16 @@ export default function Chat() {
         (chunk) => { reply += chunk; setStreamingReply(reply); },
         (toolName) => {
           const labels: Record<string, string> = {
-            get_portfolio_statistics: "Fetching portfolio statistics...",
             get_ticker_analysis: "Analyzing ticker history...",
-            get_behavioral_patterns: "Analyzing behavioral patterns...",
             get_post_exit_prices: "Checking post-exit prices...",
+            get_sector_concentration: "Grouping positions by sector...",
+            get_correlation_analysis: "Computing position correlations...",
+            get_entry_timing_analysis: "Assessing entry timing...",
+            get_risk_metrics: "Computing risk & concentration...",
+            get_similar_past_setups: "Finding similar past setups...",
+            get_fee_impact_report: "Breaking down fee impact...",
+            compare_to_benchmark: "Comparing to benchmark...",
+            get_revenge_trading_indicators: "Scanning for revenge trades...",
           };
           setToolStatus(labels[toolName] ?? `Running ${toolName}...`);
         },
