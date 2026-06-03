@@ -24,6 +24,23 @@ COACHING_PERSONA = (
     "When you notice a pattern — especially a recurring mistake — name it clearly."
 )
 
+# Tools are EXPENSIVE (each call is a separate model round-trip and counts against the
+# provider's request quota). The full portfolio snapshot + key statistics below already
+# contain everything needed for general analysis, so the model must answer from context
+# first and reserve tools for data that is genuinely not shown.
+DATA_USAGE_INSTRUCTIONS = (
+    "USING YOUR DATA (read carefully):\n"
+    "  • The PORTFOLIO SUMMARY, KEY STATISTICS, OPEN POSITIONS, RECENT TRADES and CLOSED LOTS "
+    "below are the user's COMPLETE, up-to-date data. Answer directly from them.\n"
+    "  • For general questions — overall performance, win rate, best/worst trades, behavioral "
+    "patterns, what to improve, current positions — DO NOT call any tool. Everything you need "
+    "is already above. Calling a tool to re-fetch this data is wrong and slow.\n"
+    "  • Only call a tool when the user needs something NOT shown here, e.g. one ticker's full "
+    "trade-by-trade history, live price correlations, a benchmark comparison, post-exit price "
+    "movement, entry-timing ranges, or a per-platform fee breakdown.\n"
+    "  • Never call more than 2 tools to answer a single question. Prefer 0."
+)
+
 FOLLOW_UP_INSTRUCTIONS = (
     "FOLLOW-UP QUESTIONS RULE:\n"
     "After any response that involved analysis or pattern findings (i.e. you called a tool or "
@@ -76,6 +93,28 @@ class ChatContextService:
             return brief
         except Exception:
             logger.info("Behavioral brief failed silently")
+            return ""
+
+    def _build_stats_brief(self) -> str:
+        """Exact headline statistics so the model never needs a tool to fetch them. Empty on failure."""
+        try:
+            if self._analytics_service is None:
+                return ""
+            s = self._analytics_service.get_portfolio_statistics()
+            if not s or s.get("total_trades", 0) == 0:
+                return ""
+            return (
+                "KEY STATISTICS (exact, computed — quote these directly):\n"
+                f"  Win Rate: {s['win_rate']:.1f}%   Profit Factor: {s['profit_factor']:.2f}\n"
+                f"  Avg Win: ${s['avg_win']:,.2f}   Avg Loss: ${s['avg_loss']:,.2f}\n"
+                f"  Best Trade: ${s['best_trade']:,.2f}   Worst Trade: ${s['worst_trade']:,.2f}\n"
+                f"  Max Drawdown: ${s['max_drawdown']:,.2f}   Avg Holding: {s['avg_holding_days']:.1f} days\n"
+                f"  Closed Trades: {s['total_trades']}   Largest Position: {s['largest_position_pct']:.1f}% of portfolio\n"
+                f"  Total Fees: ${s['total_fees']:,.2f}   Avg Fee/Trade: ${s['avg_fees_per_trade']:,.2f}   "
+                f"Most Traded: {s['most_traded_ticker']}"
+            )
+        except Exception:
+            logger.info("Stats brief failed silently")
             return ""
 
     def build(self) -> str:
@@ -136,17 +175,22 @@ class ChatContextService:
             for l in all_closed
         ) or "  No closed lots yet"
 
+        stats_brief = self._build_stats_brief()
+        stats_section = f"{stats_brief}\n\n" if stats_brief else ""
+
         behavioral_brief = self._build_behavioral_brief()
         brief_section = f"\n\n{behavioral_brief}" if behavioral_brief else ""
 
         return (
             f"{COACHING_PERSONA} "
             f"Today's date is {date.today().strftime('%d/%m/%Y')}.\n\n"
+            f"{DATA_USAGE_INSTRUCTIONS}\n\n"
             f"PORTFOLIO SUMMARY (excluding index funds):\n"
             f"  Total Market Value: ${summary.total_market_value:,.2f}\n"
             f"  Unrealized P&L: ${summary.total_unrealized_pnl:,.2f}\n"
             f"  Realized P&L: ${summary.total_realized_pnl:,.2f}\n"
             f"  Total Fees Paid: ${total_fees:,.2f}\n\n"
+            f"{stats_section}"
             f"OPEN POSITIONS:\n{positions_text}\n\n"
             f"RECENT TRADES (last 20, excluding indexes):\n{trades_text}\n\n"
             f"CLOSED LOTS (all, sorted by P&L descending):\n{closed_text}"

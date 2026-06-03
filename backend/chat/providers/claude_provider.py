@@ -71,7 +71,23 @@ class ClaudeProvider(BaseChatProvider):
                 yield json.dumps({"t": text}) + "\n"
                 return
 
-        yield json.dumps({"error": "Tool loop exceeded maximum rounds"}) + "\n"
+        # Tool budget exhausted: one final call with tools disabled so the user still
+        # gets a written answer from the data already gathered, instead of an error.
+        logger.info("Claude tool loop hit MAX_TOOL_ROUNDS — final answer without tools")
+        try:
+            final = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=msgs + [{
+                    "role": "user",
+                    "content": "Answer my question now using the data already gathered. Do not call any more tools.",
+                }],
+            )
+            text = "".join(b.text for b in final.content if hasattr(b, "text"))
+            yield json.dumps({"t": text}) + "\n"
+        except anthropic.APIError as e:
+            yield json.dumps({"error": f"Claude error: {e.message}"}) + "\n"
 
     def _stream_technical_impl(self, messages, system_prompt, images) -> Iterator[str]:
         try:

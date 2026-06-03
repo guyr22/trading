@@ -1,18 +1,16 @@
 """Central registry for all chat tool definitions.
 
 Adding a new tool means adding one entry to _TOOL_DEFS — no other file changes.
+
+Tools here are ONLY for data that is NOT already in the chat system prompt. The prompt
+(built by ChatContextService) already carries the portfolio summary, exact key statistics,
+live open positions, recent trades, all closed lots and the behavioral brief — so tools that
+merely re-fetch that data were removed: each tool call is a separate model round-trip that
+burns provider request quota. Every tool below requires a per-ticker deep-dive or live market
+data the prompt cannot contain.
 """
 
 _TOOL_DEFS: list[dict] = [
-    {
-        "name": "get_portfolio_statistics",
-        "description": (
-            "Returns overall portfolio statistics: win rate, profit factor, avg win/loss, "
-            "max drawdown, avg holding days, per-ticker stats, monthly P&L timeseries. "
-            "Call this for any question about overall performance metrics."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
-    },
     {
         "name": "get_ticker_analysis",
         "description": (
@@ -25,15 +23,6 @@ _TOOL_DEFS: list[dict] = [
             "properties": {"ticker": {"type": "string", "description": "Stock ticker symbol, e.g. TSLA"}},
             "required": ["ticker"],
         },
-    },
-    {
-        "name": "get_behavioral_patterns",
-        "description": (
-            "Returns behavioural trading patterns: avg holding days for winners vs losers, "
-            "fee drag per ticker, monthly trade frequency, streak analysis, loss profile. "
-            "Call this when the user asks what mistakes they make or how to improve."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "get_post_exit_prices",
@@ -50,14 +39,6 @@ _TOOL_DEFS: list[dict] = [
             },
             "required": ["ticker", "close_date"],
         },
-    },
-    {
-        "name": "get_current_prices",
-        "description": (
-            "Returns live prices, market values, unrealized P&L and portfolio weight for all open positions. "
-            "Call this when the user asks about current prices or the current state of the portfolio."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "get_sector_concentration",
@@ -138,16 +119,6 @@ _TOOL_DEFS: list[dict] = [
         },
     },
     {
-        "name": "get_disposition_effect",
-        "description": (
-            "Computes the disposition effect: ratio of winning trades closed early vs losing trades "
-            "held long. Returns avg holding days for winners vs losers, early-exit count, and an "
-            "interpretation. Call this when the user asks about their tendency to cut winners or "
-            "hold losers."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
-    },
-    {
         "name": "get_revenge_trading_indicators",
         "description": (
             "Detects potential revenge trading: trades placed within 48 hours of a realized loss "
@@ -169,15 +140,6 @@ _TOOL_DEFS: list[dict] = [
             },
             "required": [],
         },
-    },
-    {
-        "name": "get_coaching_summary",
-        "description": (
-            "Returns a structured coaching brief: top 2 behavioral flags, current risk metrics "
-            "summary, and 3 suggested focus areas for improvement. Call this when the user asks "
-            "for an overall coaching assessment or 'what should I work on'."
-        ),
-        "parameters": {"type": "object", "properties": {}, "required": []},
     },
 ]
 

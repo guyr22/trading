@@ -69,7 +69,21 @@ class OpenAIProvider(BaseChatProvider):
                 yield json.dumps({"t": msg.content or ""}) + "\n"
                 return
 
-        yield json.dumps({"error": "Tool loop exceeded maximum rounds"}) + "\n"
+        # Tool budget exhausted: one final call with tools disabled so the user still
+        # gets a written answer from the data already gathered, instead of an error.
+        logger.info("OpenAI tool loop hit MAX_TOOL_ROUNDS — final answer without tools")
+        try:
+            final = client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=2048,
+                messages=msgs + [{
+                    "role": "user",
+                    "content": "Answer my question now using the data already gathered. Do not call any more tools.",
+                }],
+            )
+            yield json.dumps({"t": final.choices[0].message.content or ""}) + "\n"
+        except openai.APIError as e:
+            yield json.dumps({"error": f"OpenAI error: {str(e)}"}) + "\n"
 
     def _stream_technical_impl(self, messages, system_prompt, images) -> Iterator[str]:
         try:
