@@ -3,7 +3,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from models import TradeAction
+from models import AlertCondition, TradeAction
 
 
 class TradeCreate(BaseModel):
@@ -122,6 +122,47 @@ class BenchmarkComparison(BaseModel):
     beat_rate: float               # lots_beat / lots_total as a percentage
     cumulative: list[BenchmarkPoint]
     available: bool                # False when there are no closed lots or price data could not be fetched
+
+
+class AlertCreate(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=10)
+    condition: AlertCondition
+    target_price: float = Field(..., gt=0)
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+class AlertUpdate(BaseModel):
+    # Used to pause/resume or re-arm a one-shot alert.
+    active: bool
+
+
+class AlertResponse(BaseModel):
+    id: int
+    ticker: str
+    condition: AlertCondition
+    target_price: float
+    note: Optional[str] = None
+    active: bool
+    current_price: Optional[float] = None
+    triggered_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str
+    keys: PushKeys
+
+
+class VapidKeyResponse(BaseModel):
+    public_key: Optional[str] = None
+    enabled: bool
 
 
 class ChatMessage(BaseModel):

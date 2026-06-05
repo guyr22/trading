@@ -7,7 +7,9 @@ from database import get_db
 from models import User
 from repositories.etf_repository import EtfRepository
 from repositories.index_trade_repository import IndexTradeRepository
+from repositories.push_repository import PushSubscriptionRepository
 from repositories.trade_repository import TradeRepository
+from services.alert_service import AlertService
 from services.analytics_service import AnalyticsService
 from services.chat_context_service import ChatContextService
 from services.portfolio_service import PortfolioService
@@ -68,3 +70,18 @@ def get_chat_context_service(
     current_user: User = Depends(get_current_user),
 ) -> ChatContextService:
     return ChatContextService(db, portfolio_svc, analytics_svc, current_user.id)
+
+
+def get_alert_service(
+    db: Session = Depends(get_db),
+    price_svc: PriceService = Depends(get_price_service),
+    current_user: User = Depends(get_current_user),
+) -> AlertService:
+    return AlertService(db, price_svc, current_user.id)
+
+
+def get_push_repo(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PushSubscriptionRepository:
+    return PushSubscriptionRepository(db, current_user.id)

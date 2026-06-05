@@ -102,6 +102,25 @@ def _ensure_chat_schema() -> None:
         logger.info("Created chat_conversations table")
 
 
+def _ensure_alerts_schema() -> None:
+    """Create price_alerts / push_subscriptions tables if missing (idempotent).
+
+    Production pins a logical Alembic head and skips migrations, so — like the
+    auth and chat tables — the alert tables are also created defensively here.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(engine)
+    existing = inspector.get_table_names()
+    if "price_alerts" not in existing:
+        from models import PriceAlert
+        PriceAlert.__table__.create(bind=engine, checkfirst=True)
+        logger.info("Created price_alerts table")
+    if "push_subscriptions" not in existing:
+        from models import PushSubscription
+        PushSubscription.__table__.create(bind=engine, checkfirst=True)
+        logger.info("Created push_subscriptions table")
+
+
 def _ensure_admin_user() -> None:
     """Create the admin user from env vars on first startup and assign orphaned trades to them."""
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
@@ -233,6 +252,12 @@ async def lifespan(app: FastAPI):
         raise
 
     try:
+        _ensure_alerts_schema()
+    except Exception:
+        logger.error("Alerts schema setup failed:\n%s", traceback.format_exc())
+        raise
+
+    try:
         _migrate_index_trades_if_needed()
     except Exception:
         logger.error("Index trade data migration failed:\n%s", traceback.format_exc())
@@ -261,7 +286,11 @@ async def lifespan(app: FastAPI):
 
     price_service.start_background_refresh(SessionLocal)
 
+    from services.alert_checker import alert_checker
+    alert_checker.start(SessionLocal)
+
     yield
 
-    logger.info("Shutting down — stopping price refresh thread")
+    logger.info("Shutting down — stopping background threads")
     price_service.stop_background_refresh()
+    alert_checker.stop()

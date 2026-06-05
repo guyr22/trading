@@ -311,6 +311,85 @@ export async function sendChatMessage(
   }
 }
 
+// ---- Price alerts & push notifications -------------------------------------
+
+export type AlertCondition = "ABOVE" | "BELOW";
+
+export interface PriceAlert {
+  id: number;
+  ticker: string;
+  condition: AlertCondition;
+  target_price: number;
+  note: string | null;
+  active: boolean;
+  current_price: number | null;
+  triggered_at: string | null;
+  created_at: string;
+}
+
+export interface AlertPayload {
+  ticker: string;
+  condition: AlertCondition;
+  target_price: number;
+  note?: string | null;
+}
+
+export interface VapidKey {
+  public_key: string | null;
+  enabled: boolean;
+}
+
+export interface BrowserSubscriptionJSON {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+export async function fetchAlerts(): Promise<PriceAlert[]> {
+  const res = await fetch(`${API}/alerts`, OPTS);
+  if (!res.ok) throw new Error("Failed to fetch alerts");
+  return res.json();
+}
+
+export async function createAlert(payload: AlertPayload): Promise<PriceAlert> {
+  const res = await fetch(`${API}/alerts`, json(payload));
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to create alert"); }
+  return res.json();
+}
+
+export async function updateAlert(id: number, active: boolean): Promise<PriceAlert> {
+  const res = await fetch(`${API}/alerts/${id}`, {
+    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active }),
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to update alert"); }
+  return res.json();
+}
+
+export async function deleteAlert(id: number): Promise<void> {
+  const res = await fetch(`${API}/alerts/${id}`, { ...OPTS, method: "DELETE" });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to delete alert"); }
+}
+
+export async function fetchVapidKey(): Promise<VapidKey> {
+  const res = await fetch(`${API}/push/vapid-public-key`, OPTS);
+  if (!res.ok) throw new Error("Failed to fetch push config");
+  return res.json();
+}
+
+export async function subscribePush(sub: BrowserSubscriptionJSON): Promise<void> {
+  const res = await fetch(`${API}/push/subscribe`, json(sub));
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to subscribe"); }
+}
+
+export async function unsubscribePush(endpoint: string): Promise<void> {
+  await fetch(`${API}/push/unsubscribe`, json({ endpoint }));
+}
+
+export async function sendTestPush(): Promise<{ sent: number }> {
+  const res = await fetch(`${API}/push/test`, { ...OPTS, method: "POST" });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to send test"); }
+  return res.json();
+}
+
 export async function fetchLeveragedEtfs(): Promise<LeveragedEtf[]> {
   const res = await fetch(`${API}/leveraged-etfs`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch leveraged ETFs");

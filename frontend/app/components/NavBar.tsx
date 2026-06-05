@@ -11,6 +11,7 @@ const NAV_ALL = [
   { href: "/history", label: "History" },
   { href: "/indexes", label: "Indexes" },
   { href: "/statistics", label: "Statistics" },
+  { href: "/alerts", label: "Alerts" },
   { href: "/chat", label: "AI" },
 ];
 

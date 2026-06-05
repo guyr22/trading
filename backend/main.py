@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from auth.router import router as auth_router
 from core.logging import configure_logging, get_logger
-from routers import chat, index_trades, leveraged_etfs, portfolio, trades
+from routers import alerts, chat, index_trades, leveraged_etfs, portfolio, trades
 from startup.lifespan import lifespan
 
 configure_logging()
@@ -45,3 +45,4 @@ app.include_router(index_trades.router)
 app.include_router(leveraged_etfs.router)
 app.include_router(portfolio.router)
 app.include_router(chat.router)
+app.include_router(alerts.router)

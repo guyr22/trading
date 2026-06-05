@@ -104,3 +104,43 @@ class ChatConversation(Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False, default="gemini")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now(), onupdate=lambda: datetime.now())
+
+
+class AlertCondition(str, enum.Enum):
+    ABOVE = "ABOVE"   # fire when price crosses up through target_price
+    BELOW = "BELOW"   # fire when price crosses down through target_price
+
+
+class PriceAlert(Base):
+    __tablename__ = "price_alerts"
+    __table_args__ = (
+        Index("ix_price_alerts_user_active", "user_id", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    condition: Mapped[str] = mapped_column(SAEnum(AlertCondition), nullable=False)
+    target_price: Mapped[float] = mapped_column(Float, nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Last price seen by the checker — used to detect a *crossing* of the target
+    # rather than firing whenever the price merely sits on the far side.
+    last_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (
+        Index("ix_push_subs_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    # The browser push endpoint uniquely identifies a device/subscription.
+    endpoint: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    p256dh: Mapped[str] = mapped_column(String, nullable=False)
+    auth: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
