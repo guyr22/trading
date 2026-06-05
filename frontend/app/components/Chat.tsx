@@ -6,10 +6,15 @@ import remarkGfm from "remark-gfm";
 import { sendChatMessage, fetchPortfolio, fetchStatistics, fetchInsights, fetchConversations, upsertConversation, deleteConversationApi, type ChatMessage, type Conversation } from "../api";
 import { useAuth } from "../contexts/AuthContext";
 
+// Gemini 3 Flash is the default: it supports parallel function calling, so a full
+// trade analysis batches every tool into ONE request (~2 requests total) and stays
+// well under the free-tier rate limit. Gemini 3.5 Flash is listed last because its
+// free tier caps at 5 requests/minute — a multi-tool analysis 429s almost every time,
+// which is exactly what made the chat fail before. Pick it only with billing enabled.
 const PROVIDERS = [
-  { value: "gemini35", label: "Gemini 3.5 Flash", color: "#4285f4" },
   { value: "gemini", label: "Gemini 3 Flash", color: "#4285f4" },
   { value: "gemini25", label: "Gemini 2.5 Flash", color: "#4285f4" },
+  { value: "gemini35", label: "Gemini 3.5 Flash", color: "#4285f4" },
 ];
 
 const QUESTION_BANK: { category: string; questions: string[] }[] = [
@@ -92,7 +97,7 @@ export default function Chat() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [provider, setProvider] = useState("gemini35");
+  const [provider, setProvider] = useState("gemini");
   const [loading, setLoading] = useState(false);
   const [streamingReply, setStreamingReply] = useState("");
   const [toolStatus, setToolStatus] = useState("");

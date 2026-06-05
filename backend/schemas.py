@@ -113,7 +113,10 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    provider: Literal["gemini", "gemini25", "gemini35"] = "gemini35"
+    # Default to gemini-3-flash-preview: it batches all tool calls into one request,
+    # so a full trade analysis stays under the free-tier rate limit. gemini-3.5-flash
+    # caps at 5 requests/minute and 429s on multi-tool analyses, so it is not the default.
+    provider: Literal["gemini", "gemini25", "gemini35"] = "gemini"
 
 
 class PortfolioStatistics(BaseModel):
