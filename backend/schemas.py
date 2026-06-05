@@ -106,6 +106,24 @@ class CumulativePoint(BaseModel):
     cumulative_pnl: float
 
 
+class BenchmarkPoint(BaseModel):
+    date: str
+    your_pnl: float
+    benchmark_pnl: float
+
+
+class BenchmarkComparison(BaseModel):
+    benchmark_ticker: str
+    your_realized_pnl: float       # your cumulative realized P&L on closed lots
+    benchmark_pnl: float           # what the same capital made in the benchmark over the same holding windows
+    alpha: float                   # your_realized_pnl - benchmark_pnl
+    lots_total: int                # number of closed lots compared
+    lots_beat: int                 # closed lots whose return beat the benchmark over the same window
+    beat_rate: float               # lots_beat / lots_total as a percentage
+    cumulative: list[BenchmarkPoint]
+    available: bool                # False when there are no closed lots or price data could not be fetched
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

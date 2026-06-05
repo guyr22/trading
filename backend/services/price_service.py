@@ -1,10 +1,11 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 
 import yfinance as yf
 
-from core.config import CACHE_TTL, PRICE_REFRESH_INTERVAL
+from core.config import CACHE_TTL, HIST_CACHE_TTL, PRICE_REFRESH_INTERVAL
 from core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,6 +15,8 @@ class PriceService:
     def __init__(self) -> None:
         self._price_cache: dict[str, tuple[float, float]] = {}
         self._ticker_info_cache: dict[str, dict] = {}
+        # ticker -> (sorted [(YYYY-MM-DD, close)], fetched_at, covered_from)
+        self._hist_cache: dict[str, tuple[list[tuple[str, float]], float, date]] = {}
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
 
@@ -65,6 +68,30 @@ class PriceService:
                     results[t] = cached[0] if cached else None
 
         return results
+
+    # ---- Historical closes (for benchmarking) -------------------------------
+
+    def get_historical_closes(self, ticker: str, start: date) -> list[tuple[str, float]]:
+        """Return a chronologically sorted list of (YYYY-MM-DD, close) for `ticker`
+        from `start` to today. Cached per ticker; a cached series is reused when it
+        is fresh and already reaches back at least as far as `start`. Returns the
+        last known series (or []) on fetch failure so callers degrade gracefully.
+        """
+        now = time.time()
+        cached = self._hist_cache.get(ticker)
+        if cached and now - cached[1] < HIST_CACHE_TTL and cached[2] <= start:
+            return cached[0]
+        try:
+            df = yf.Ticker(ticker).history(start=start.isoformat())
+            series = [(idx.strftime("%Y-%m-%d"), float(row["Close"])) for idx, row in df.iterrows()]
+            if series:
+                self._hist_cache[ticker] = (series, now, start)
+                logger.info("Historical closes fetched %s: %d days from %s", ticker, len(series), start)
+                return series
+            logger.warning("Historical closes empty for %s from %s", ticker, start)
+        except Exception as e:
+            logger.warning("Historical close fetch failed for %s: %s", ticker, e)
+        return cached[0] if cached else []
 
     # ---- Ticker info (sector / market cap) ----------------------------------
 

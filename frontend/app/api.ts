@@ -121,6 +121,24 @@ export interface CumulativePoint {
   cumulative_pnl: number;
 }
 
+export interface BenchmarkPoint {
+  date: string;
+  your_pnl: number;
+  benchmark_pnl: number;
+}
+
+export interface BenchmarkComparison {
+  benchmark_ticker: string;
+  your_realized_pnl: number;
+  benchmark_pnl: number;
+  alpha: number;
+  lots_total: number;
+  lots_beat: number;
+  beat_rate: number;
+  cumulative: BenchmarkPoint[];
+  available: boolean;
+}
+
 export interface PortfolioStatistics {
   total_pnl: number;
   win_rate: number;
@@ -194,6 +212,12 @@ export async function createIndexTrade(payload: TradePayload): Promise<Trade> {
 export async function fetchStatistics(): Promise<PortfolioStatistics> {
   const res = await fetch(`${API}/statistics`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch statistics");
+  return res.json();
+}
+
+export async function fetchBenchmark(ticker: string): Promise<BenchmarkComparison> {
+  const res = await fetch(`${API}/benchmark?ticker=${encodeURIComponent(ticker)}`, OPTS);
+  if (!res.ok) throw new Error("Failed to fetch benchmark");
   return res.json();
 }
 

@@ -1,17 +1,36 @@
+import bisect
+
 from sqlalchemy.orm import Session
 
 from domain.finance import ClosedLot, fifo_closed_lots
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
-from schemas import ClosedLotResponse, CumulativePoint, MonthlyPnl, PortfolioStatistics, TickerStat
+from schemas import (
+    BenchmarkComparison,
+    BenchmarkPoint,
+    ClosedLotResponse,
+    CumulativePoint,
+    MonthlyPnl,
+    PortfolioStatistics,
+    TickerStat,
+)
 from services.portfolio_service import PortfolioService
+from services.price_service import PriceService
 
 
 class StatisticsService:
-    def __init__(self, db: Session, portfolio_service: PortfolioService, etf_repo: EtfRepository, user_id: int) -> None:
+    def __init__(
+        self,
+        db: Session,
+        portfolio_service: PortfolioService,
+        etf_repo: EtfRepository,
+        price_service: PriceService,
+        user_id: int,
+    ) -> None:
         self._trade_repo = TradeRepository(db, user_id)
         self._portfolio_service = portfolio_service
         self._etf_repo = etf_repo
+        self._price_service = price_service
 
     def compute(self) -> PortfolioStatistics:
         all_trades = self._trade_repo.get_all_ordered()
@@ -152,4 +171,88 @@ class StatisticsService:
             monthly_pnl=monthly_pnl,
             cumulative_pnl=cumulative_pnl,
             closed_lots=closed_lot_responses,
+        )
+
+    def compute_benchmark(self, benchmark_ticker: str) -> BenchmarkComparison:
+        """Compare each closed lot against the benchmark over its exact holding window.
+
+        For a lot of `cost_basis` held from open_date to close_date, the benchmark
+        would have returned ``cost_basis * (price[close] / price[open] - 1)``. We
+        accumulate both your realized P&L and the benchmark's by close date to
+        produce two aligned cumulative curves, plus headline alpha and beat-rate.
+        Shorts are compared as opportunity cost: the dollars tied up in the trade
+        measured against a long position in the benchmark over the same days.
+        """
+
+        def key(d) -> str:
+            return d.strftime("%Y-%m-%d")
+
+        def empty(available: bool, realized: float = 0.0) -> BenchmarkComparison:
+            return BenchmarkComparison(
+                benchmark_ticker=benchmark_ticker,
+                your_realized_pnl=round(realized, 2),
+                benchmark_pnl=0.0,
+                alpha=round(realized, 2),
+                lots_total=0,
+                lots_beat=0,
+                beat_rate=0.0,
+                cumulative=[],
+                available=available,
+            )
+
+        all_trades = self._trade_repo.get_all_ordered()
+        actual_tickers = list(dict.fromkeys(t.ticker for t in all_trades))
+        all_closed: list[ClosedLot] = []
+        for ticker in actual_tickers:
+            t_trades = [t for t in all_trades if t.ticker == ticker]
+            all_closed.extend(fifo_closed_lots(t_trades, ticker))
+
+        if not all_closed:
+            return empty(available=False)
+
+        sorted_closed = sorted(all_closed, key=lambda l: (l.close_date, 0))
+        realized_total = sum(l.pnl for l in all_closed)
+        min_open = min(l.open_date for l in all_closed)
+
+        series = self._price_service.get_historical_closes(benchmark_ticker, min_open)
+        if not series:
+            # Prices unavailable — surface your realized P&L but flag benchmark as missing.
+            return empty(available=False, realized=realized_total)
+
+        sorted_dates = [d for d, _ in series]
+        sorted_prices = [p for _, p in series]
+
+        def price_asof(d) -> float | None:
+            i = bisect.bisect_right(sorted_dates, key(d)) - 1
+            return sorted_prices[i] if i >= 0 else None
+
+        your_cum = bench_cum = 0.0
+        lots_beat = 0
+        daily: dict[str, tuple[float, float]] = {}
+        for lot in sorted_closed:
+            your_cum += lot.pnl
+            open_px = price_asof(lot.open_date)
+            close_px = price_asof(lot.close_date)
+            if open_px and close_px and lot.cost_basis:
+                bench_ret = close_px / open_px - 1
+                bench_cum += lot.cost_basis * bench_ret
+                if lot.pnl / lot.cost_basis > bench_ret:
+                    lots_beat += 1
+            daily[key(lot.close_date)] = (your_cum, bench_cum)
+
+        cumulative = [
+            BenchmarkPoint(date=d, your_pnl=round(y, 2), benchmark_pnl=round(b, 2))
+            for d, (y, b) in sorted(daily.items())
+        ]
+        lots_total = len(sorted_closed)
+        return BenchmarkComparison(
+            benchmark_ticker=benchmark_ticker,
+            your_realized_pnl=round(your_cum, 2),
+            benchmark_pnl=round(bench_cum, 2),
+            alpha=round(your_cum - bench_cum, 2),
+            lots_total=lots_total,
+            lots_beat=lots_beat,
+            beat_rate=round(lots_beat / lots_total * 100, 1) if lots_total else 0.0,
+            cumulative=cumulative,
+            available=True,
         )

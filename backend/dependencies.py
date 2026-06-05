@@ -45,9 +45,10 @@ def get_statistics_service(
     db: Session = Depends(get_db),
     portfolio_svc: PortfolioService = Depends(get_portfolio_service),
     etf_repo: EtfRepository = Depends(get_etf_repo),
+    price_svc: PriceService = Depends(get_price_service),
     current_user: User = Depends(get_current_user),
 ) -> StatisticsService:
-    return StatisticsService(db, portfolio_svc, etf_repo, current_user.id)
+    return StatisticsService(db, portfolio_svc, etf_repo, price_svc, current_user.id)
 
 
 def get_analytics_service(
