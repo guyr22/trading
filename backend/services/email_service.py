@@ -13,6 +13,7 @@ is a no-op, so the digest feature stays inert rather than erroring.
 """
 import os
 import smtplib
+import socket
 import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -20,6 +21,30 @@ from email.utils import formataddr
 from core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class _IPv4SMTP(smtplib.SMTP):
+    """SMTP client that connects over IPv4 only.
+
+    Container platforms such as Railway often advertise an IPv6 address with no
+    working IPv6 route, so smtplib's default dual-stack connect raises
+    ``[Errno 101] Network is unreachable`` before it can even authenticate.
+    Forcing IPv4 sidesteps that. ``self._host`` remains the hostname, so STARTTLS
+    certificate verification is unaffected. Falls back to the default dual-stack
+    behaviour if no IPv4 address can be reached.
+    """
+
+    def _get_socket(self, host, port, timeout):
+        try:
+            infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            infos = []
+        for *_unused, sockaddr in infos:
+            try:
+                return socket.create_connection(sockaddr, timeout, self.source_address)
+            except OSError:
+                continue
+        return super()._get_socket(host, port, timeout)
 
 
 class EmailService:
@@ -53,7 +78,7 @@ class EmailService:
 
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(self._host, self._port, timeout=30) as server:
+            with _IPv4SMTP(self._host, self._port, timeout=30) as server:
                 server.starttls(context=context)
                 server.login(self._user, self._password)
                 server.send_message(msg)
