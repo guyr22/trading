@@ -112,12 +112,21 @@ class DigestService:
         for t in all_trades:
             by_ticker.setdefault(t.ticker, []).append(t)
         realized_week = 0.0
-        lots_week = 0
+        closed_week: list[dict] = []
         for ticker, trades in by_ticker.items():
             for lot in fifo_closed_lots(trades, ticker):
                 if lot.close_date >= cutoff:
                     realized_week += lot.pnl
-                    lots_week += 1
+                    closed_week.append({
+                        "ticker": lot.ticker,
+                        "close_date": lot.close_date,
+                        "quantity": lot.quantity,
+                        "pnl": lot.pnl,
+                        "pnl_pct": (lot.pnl / lot.cost_basis * 100) if lot.cost_basis else 0.0,
+                    })
+        lots_week = len(closed_week)
+        # Most recent first, then largest moves.
+        closed_week.sort(key=lambda r: (r["close_date"], abs(r["pnl"])), reverse=True)
         fees_week = sum(float(t.fees or 0) for t in all_trades if t.executed_at >= cutoff)
 
         # Movers (positions with a known weekly move).
@@ -147,6 +156,7 @@ class DigestService:
             "weekly_pct": weekly_pct,
             "realized_week": realized_week,
             "lots_week": lots_week,
+            "closed_week": closed_week,
             "fees_week": fees_week,
             "best": best,
             "worst": worst,
@@ -216,6 +226,32 @@ class DigestService:
               · fees {_money(d['fees_week'])}
             </p>"""
 
+        closed_block = ""
+        if d["closed_week"]:
+            closed_rows = "".join(
+                f"""
+                <tr>
+                  <td style="padding:8px 6px;border-bottom:1px solid #eee;"><strong>{c['ticker']}</strong></td>
+                  <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;color:#888;">{c['close_date'].strftime('%b %d')}</td>
+                  <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">{c['quantity']:g}</td>
+                  <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;color:{_color(c['pnl'])};">
+                    {_signed(c['pnl'])} ({c['pnl_pct']:+.1f}%)
+                  </td>
+                </tr>"""
+                for c in d["closed_week"]
+            )
+            closed_block = f"""
+            <h3 style="margin:24px 0 8px;font-size:15px;color:#111;">Closed this week</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#333;">
+              <tr style="color:#888;text-align:left;">
+                <th style="padding:6px;font-weight:600;">Ticker</th>
+                <th style="padding:6px;text-align:right;font-weight:600;">Closed</th>
+                <th style="padding:6px;text-align:right;font-weight:600;">Qty</th>
+                <th style="padding:6px;text-align:right;font-weight:600;">Realized P&amp;L</th>
+              </tr>
+              {closed_rows}
+            </table>"""
+
         flags_block = ""
         if d["flags"]:
             items = "".join(f'<li style="margin:4px 0;">{f}</li>' for f in d["flags"])
@@ -253,6 +289,7 @@ class DigestService:
       {positions_block}
       {movers_block}
       {realized_block}
+      {closed_block}
       {flags_block}
 
       <div style="margin-top:28px;">{button}</div>

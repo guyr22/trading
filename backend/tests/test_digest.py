@@ -4,7 +4,7 @@ Hermetic: in-memory SQLite, mocked price/email services, and a patched clock.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -106,6 +106,49 @@ class TestDigestBuilder:
         assert "weekly portfolio digest" in subject.lower()
         assert "NVDA" in html
         assert "Unrealized" in html
+
+    def test_closed_trades_this_week_are_listed(self, db):
+        user = _user(db)
+        today = date.today()
+        # A lot opened and fully closed within the last 7 days: +$200 (+20%).
+        db.add_all([
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="NVDA", quantity=10,
+                  price=100.0, fees=0, executed_at=today - timedelta(days=3)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="NVDA", quantity=10,
+                  price=120.0, fees=0, executed_at=today),
+        ])
+        db.commit()
+
+        email = MagicMock()
+        email.send_html.return_value = True
+        svc = DigestService(_price_service(), email)
+
+        assert svc.send_for_user(db, user) is True
+        html = email.send_html.call_args.args[2]
+        assert "Closed this week" in html
+        assert "NVDA" in html
+        assert "+$200" in html        # realized P&L on the closed lot
+
+    def test_old_closed_trades_not_listed(self, db):
+        user = _user(db)
+        # Closed long ago — outside the 7-day window.
+        db.add_all([
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=5,
+                  price=100.0, fees=0, executed_at=date(2026, 1, 2)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="AAPL", quantity=5,
+                  price=110.0, fees=0, executed_at=date(2026, 1, 10)),
+        ])
+        db.commit()
+
+        email = MagicMock()
+        email.send_html.return_value = True
+        svc = DigestService(_price_service(), email)
+
+        # Nothing open and nothing closed this week → skipped in the batch.
+        assert svc.send_weekly_batch(db) == 0
+        # Direct send goes out but has no "Closed this week" section.
+        assert svc.send_for_user(db, user) is True
+        assert "Closed this week" not in email.send_html.call_args.args[2]
 
     def test_empty_portfolio_skipped_in_batch_but_sendable_directly(self, db):
         user = _user(db)  # no trades
