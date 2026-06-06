@@ -150,6 +150,32 @@ class TestDigestBuilder:
         assert svc.send_for_user(db, user) is True
         assert "Closed this week" not in email.send_html.call_args.args[2]
 
+    def test_movers_include_closed_trades(self, db):
+        user = _user(db)
+        today = date.today()
+        # Open NVDA position (~+4.1% on the week from the mocked prices)...
+        db.add(Trade(user_id=user.id, action=TradeAction.BUY, ticker="NVDA", quantity=10,
+                     price=100.0, fees=0, executed_at=today - timedelta(days=3)))
+        # ...and a big realized loss closed this week (-30%).
+        db.add_all([
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=10,
+                  price=100.0, fees=0, executed_at=today - timedelta(days=4)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="AAPL", quantity=10,
+                  price=70.0, fees=0, executed_at=today),
+        ])
+        db.commit()
+
+        email = MagicMock()
+        email.send_html.return_value = True
+        svc = DigestService(_price_service(), email)
+
+        assert svc.send_for_user(db, user) is True
+        html = email.send_html.call_args.args[2]
+        # The closed AAPL loss should be the biggest drag, tagged "(closed)".
+        assert "Biggest drag" in html
+        assert "AAPL" in html
+        assert "(closed)" in html
+
     def test_empty_portfolio_skipped_in_batch_but_sendable_directly(self, db):
         user = _user(db)  # no trades
         email = MagicMock()

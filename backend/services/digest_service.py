@@ -129,10 +129,18 @@ class DigestService:
         closed_week.sort(key=lambda r: (r["close_date"], abs(r["pnl"])), reverse=True)
         fees_week = sum(float(t.fees or 0) for t in all_trades if t.executed_at >= cutoff)
 
-        # Movers (positions with a known weekly move).
-        movers = [r for r in rows if r["week_pct"] is not None]
-        best = max(movers, key=lambda r: r["week_pct"], default=None)
-        worst = min(movers, key=lambda r: r["week_pct"], default=None)
+        # Movers — open positions (by 1-week price move) plus lots closed this
+        # week (by realized return), so the week's biggest win/loss reflects both.
+        movers = [
+            {"ticker": r["ticker"], "pct": r["week_pct"], "kind": "held"}
+            for r in rows if r["week_pct"] is not None
+        ]
+        movers += [
+            {"ticker": c["ticker"], "pct": c["pnl_pct"], "kind": "closed"}
+            for c in closed_week
+        ]
+        best = max(movers, key=lambda m: m["pct"], default=None)
+        worst = min(movers, key=lambda m: m["pct"], default=None)
 
         # Behavioral red flags (best-effort; returns [] when insufficient data).
         flags: list[str] = []
@@ -208,14 +216,16 @@ class DigestService:
         movers_block = ""
         if d["best"] and d["worst"]:
             b, w = d["best"], d["worst"]
+            b_tag = " (closed)" if b["kind"] == "closed" else ""
+            w_tag = " (closed)" if w["kind"] == "closed" else ""
             movers_block = f"""
             <h3 style="margin:24px 0 8px;font-size:15px;color:#111;">This week</h3>
             <p style="font-size:14px;color:#333;margin:4px 0;">
               🏆 Biggest gainer <strong>{b['ticker']}</strong>
-              <span style="color:{_color(b['week_pct'])};">{_arrow(b['week_pct'])} {abs(b['week_pct']):.1f}%</span>
+              <span style="color:{_color(b['pct'])};">{_arrow(b['pct'])} {abs(b['pct']):.1f}%{b_tag}</span>
               &nbsp;&nbsp;·&nbsp;&nbsp;
               📉 Biggest drag <strong>{w['ticker']}</strong>
-              <span style="color:{_color(w['week_pct'])};">{_arrow(w['week_pct'])} {abs(w['week_pct']):.1f}%</span>
+              <span style="color:{_color(w['pct'])};">{_arrow(w['pct'])} {abs(w['pct']):.1f}%{w_tag}</span>
             </p>"""
 
         realized_block = f"""
