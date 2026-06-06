@@ -28,6 +28,10 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 _RESEND_ENDPOINT = "https://api.resend.com/emails"
+# Resend's API sits behind Cloudflare, which blocks the default "Python-urllib"
+# User-Agent as a bot signature (HTTP 403, Cloudflare error 1010). A normal
+# browser UA passes the check.
+_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
 class _IPv4SMTP(smtplib.SMTP):
@@ -98,7 +102,11 @@ class EmailService:
         req = urllib.request.Request(
             _RESEND_ENDPOINT,
             data=body,
-            headers={"Authorization": f"Bearer {self._resend_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {self._resend_key}",
+                "Content-Type": "application/json",
+                "User-Agent": _USER_AGENT,
+            },
             method="POST",
         )
         try:
