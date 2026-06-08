@@ -176,6 +176,33 @@ class TestDigestBuilder:
         assert "AAPL" in html
         assert "(closed)" in html
 
+    def test_weekly_headline_combines_unrealized_and_realized_pnl(self, db):
+        user = _user(db)
+        today = date.today()
+        # Held NVDA all week: 10 sh, mocked 145 -> 151 = +$60 unrealized this week.
+        db.add(Trade(user_id=user.id, action=TradeAction.BUY, ticker="NVDA", quantity=10,
+                     price=100.0, fees=0, executed_at=date(2026, 1, 2)))
+        # Closed AAPL this week: 10 sh @100 -> @120 = +$200 realized.
+        db.add_all([
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=10,
+                  price=100.0, fees=0, executed_at=today - timedelta(days=4)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="AAPL", quantity=10,
+                  price=120.0, fees=0, executed_at=today),
+        ])
+        db.commit()
+
+        email = MagicMock()
+        email.send_html.return_value = True
+        svc = DigestService(_price_service(), email)
+
+        assert svc.send_for_user(db, user) is True
+        subject, html = email.send_html.call_args.args[1:3]
+        # Headline = unrealized this week ($60) + realized this week ($200) = $260.
+        assert "$260" in html
+        assert "$260" in subject
+        # The weekly percentage was removed from the headline.
+        assert "%) this week" not in html
+
     def test_empty_portfolio_skipped_in_batch_but_sendable_directly(self, db):
         user = _user(db)  # no trades
         email = MagicMock()

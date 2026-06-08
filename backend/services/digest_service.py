@@ -152,16 +152,16 @@ class DigestService:
         except Exception as e:  # noqa: BLE001
             logger.warning("Red-flag computation failed for user %d: %s", user.id, e)
 
-        prev_mv = total_mv - weekly_value_change
-        weekly_pct = (weekly_value_change / prev_mv * 100) if prev_mv else 0.0
+        # Money gained/lost this week = this week's unrealized price move on the
+        # shares still held + P&L realized on lots closed this week.
+        weekly_pnl = weekly_value_change + realized_week
 
         return {
             "today": today,
             "positions": rows,
             "total_mv": total_mv,
             "total_unrealized": total_unrealized,
-            "weekly_value_change": weekly_value_change,
-            "weekly_pct": weekly_pct,
+            "weekly_pnl": weekly_pnl,
             "realized_week": realized_week,
             "lots_week": lots_week,
             "closed_week": closed_week,
@@ -174,8 +174,8 @@ class DigestService:
     # ---- rendering ----------------------------------------------------------
 
     def _render(self, d: dict) -> tuple[str, str]:
-        wvc = d["weekly_value_change"]
-        subject = f"Your weekly portfolio digest — {_arrow(wvc)} {_money(abs(wvc))} this week"
+        wpnl = d["weekly_pnl"]
+        subject = f"Your weekly portfolio digest — {_arrow(wpnl)} {_money(abs(wpnl))} this week"
 
         frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
         date_str = d["today"].strftime("%b %d, %Y")
@@ -288,8 +288,8 @@ class DigestService:
 
       <div style="font-size:14px;color:#333;line-height:1.6;">
         <div>Portfolio <strong>{_money(d['total_mv'])}</strong>
-          &nbsp;<span style="color:{_color(d['weekly_value_change'])};">
-            {_arrow(d['weekly_value_change'])} {_money(abs(d['weekly_value_change']))} ({d['weekly_pct']:+.1f}%) this week</span>
+          &nbsp;<span style="color:{_color(d['weekly_pnl'])};">
+            {_arrow(d['weekly_pnl'])} {_money(abs(d['weekly_pnl']))} this week</span>
         </div>
         <div>Unrealized P&amp;L <strong style="color:{_color(d['total_unrealized'])};">{_signed(d['total_unrealized'])}</strong>
           &nbsp;·&nbsp; Realized this week <strong style="color:{_color(d['realized_week'])};">{_signed(d['realized_week'])}</strong>
