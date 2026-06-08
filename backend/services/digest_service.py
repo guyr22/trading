@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.logging import get_logger
 from domain.finance import fifo_closed_lots
-from models import TradeAction, User
+from models import User
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
 from services.analytics_service import AnalyticsService
@@ -149,42 +149,11 @@ class DigestService:
         except Exception as e:  # noqa: BLE001
             logger.warning("Red-flag computation failed for user %d: %s", user.id, e)
 
-        # Money gained/lost this week, flow-adjusted so buying or selling during
-        # the week isn't mistaken for a gain or loss. Per ticker:
-        #   contribution = current_value - value_at_week_start - net_invested
-        # where net_invested is cash put in via buys (incl. fees) minus proceeds
-        # taken out via sells (net of fees) this week. Shares bought this week net
-        # to ~0 (bought and valued at the same price); shares sold are measured
-        # from their week-start value to their actual proceeds. Summed over all
-        # tickers this equals realized + unrealized P&L for the week — computed
-        # from trades + historical prices only, no cash balance required.
-        emv_by_ticker = {p.ticker: p.market_value for p in positions}
-        weekly_pnl = 0.0
-        for ticker, trades in by_ticker.items():
-            qty_start = sum(
-                (t.quantity if t.action == TradeAction.BUY else -t.quantity)
-                for t in trades if t.executed_at < cutoff
-            )
-            bmv = 0.0
-            if qty_start:
-                wk = self._week_ago_price(ticker, cutoff)
-                if wk is None:
-                    continue  # can't value week-start holdings → leave ticker out
-                bmv = qty_start * wk
-            net_invested = sum(
-                (t.quantity * t.price + float(t.fees or 0))
-                if t.action == TradeAction.BUY
-                else -(t.quantity * t.price - float(t.fees or 0))
-                for t in trades if t.executed_at >= cutoff
-            )
-            weekly_pnl += emv_by_ticker.get(ticker, 0.0) - bmv - net_invested
-
         return {
             "today": today,
             "positions": rows,
             "total_mv": total_mv,
             "total_unrealized": total_unrealized,
-            "weekly_pnl": weekly_pnl,
             "realized_week": realized_week,
             "lots_week": lots_week,
             "closed_week": closed_week,
@@ -197,11 +166,10 @@ class DigestService:
     # ---- rendering ----------------------------------------------------------
 
     def _render(self, d: dict) -> tuple[str, str]:
-        wpnl = d["weekly_pnl"]
-        subject = f"Your weekly portfolio digest — {_arrow(wpnl)} {_money(abs(wpnl))} this week"
+        date_str = d["today"].strftime("%b %d, %Y")
+        subject = f"Your weekly portfolio digest — {date_str}"
 
         frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
-        date_str = d["today"].strftime("%b %d, %Y")
 
         if d["positions"]:
             position_rows = "".join(
@@ -210,9 +178,6 @@ class DigestService:
                   <td style="padding:8px 6px;border-bottom:1px solid #eee;"><strong>{r['ticker']}</strong></td>
                   <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">{r['quantity']:g}</td>
                   <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">${r['current_price']:,.2f}</td>
-                  <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;color:{_color(r['week_pct']) if r['week_pct'] is not None else '#888'};">
-                    {(_arrow(r['week_pct']) + ' ' + format(abs(r['week_pct']), '.1f') + '%') if r['week_pct'] is not None else '—'}
-                  </td>
                   <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">{_money(r['market_value'])}</td>
                   <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;color:{_color(r['unrealized_pnl'])};">
                     {_signed(r['unrealized_pnl'])} ({r['unrealized_pnl_pct']:+.0f}%)
@@ -227,7 +192,6 @@ class DigestService:
                 <th style="padding:6px;font-weight:600;">Ticker</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Shares</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Price</th>
-                <th style="padding:6px;text-align:right;font-weight:600;">Stock 1-wk</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Mkt value</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Unreal. P&amp;L</th>
               </tr>
@@ -310,10 +274,7 @@ class DigestService:
       <h2 style="margin:0 0 16px;font-size:20px;color:#111;">📈 Your weekly portfolio digest</h2>
 
       <div style="font-size:14px;color:#333;line-height:1.6;">
-        <div>Portfolio <strong>{_money(d['total_mv'])}</strong>
-          &nbsp;<span style="color:{_color(d['weekly_pnl'])};">
-            {_arrow(d['weekly_pnl'])} {_money(abs(d['weekly_pnl']))} this week</span>
-        </div>
+        <div>Portfolio <strong>{_money(d['total_mv'])}</strong></div>
         <div>Unrealized P&amp;L <strong style="color:{_color(d['total_unrealized'])};">{_signed(d['total_unrealized'])}</strong>
           &nbsp;·&nbsp; Realized this week <strong style="color:{_color(d['realized_week'])};">{_signed(d['realized_week'])}</strong>
         </div>

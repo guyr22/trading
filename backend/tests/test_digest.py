@@ -106,6 +106,8 @@ class TestDigestBuilder:
         assert "weekly portfolio digest" in subject.lower()
         assert "NVDA" in html
         assert "Unrealized" in html
+        assert "1-wk" not in html            # 1-wk column removed from positions table
+        assert "this week" not in subject    # weekly profit/loss removed from subject
 
     def test_closed_trades_this_week_are_listed(self, db):
         user = _user(db)
@@ -175,73 +177,6 @@ class TestDigestBuilder:
         assert "Biggest drag" in html
         assert "AAPL" in html
         assert "(closed)" in html
-
-    def test_weekly_headline_combines_unrealized_and_realized_pnl(self, db):
-        user = _user(db)
-        today = date.today()
-        # Held NVDA all week: 10 sh, mocked 145 -> 151 = +$60 unrealized this week.
-        db.add(Trade(user_id=user.id, action=TradeAction.BUY, ticker="NVDA", quantity=10,
-                     price=100.0, fees=0, executed_at=date(2026, 1, 2)))
-        # Closed AAPL this week: 10 sh @100 -> @120 = +$200 realized.
-        db.add_all([
-            Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=10,
-                  price=100.0, fees=0, executed_at=today - timedelta(days=4)),
-            Trade(user_id=user.id, action=TradeAction.SELL, ticker="AAPL", quantity=10,
-                  price=120.0, fees=0, executed_at=today),
-        ])
-        db.commit()
-
-        email = MagicMock()
-        email.send_html.return_value = True
-        svc = DigestService(_price_service(), email)
-
-        assert svc.send_for_user(db, user) is True
-        subject, html = email.send_html.call_args.args[1:3]
-        # Headline = unrealized this week ($60) + realized this week ($200) = $260.
-        assert "$260" in html
-        assert "$260" in subject
-        # The weekly percentage was removed from the headline.
-        assert "%) this week" not in html
-
-    def test_weekly_pnl_is_flow_adjusted_for_rebuys(self, db):
-        # Faithful to the reported bug: held NOW into the week, exited at a profit
-        # this week, then rebought today after a drop. The headline must NOT mark
-        # the rebought shares against the week-ago (higher) price.
-        user = _user(db)
-        today = date.today()
-        ps = MagicMock()
-        ps.get_live_prices.return_value = {"NOW": 100.0}     # today: dropped to 100
-        ps.get_live_price.return_value = 100.0
-        ps.get_historical_closes.return_value = [            # ~a week ago: 130
-            ("2026-05-15", 128.0), ("2026-05-29", 130.0),
-        ]
-
-        db.add_all([
-            # Held into the week (bought before the 7-day window).
-            Trade(user_id=user.id, action=TradeAction.BUY, ticker="NOW", quantity=10,
-                  price=120.0, fees=0, executed_at=today - timedelta(days=30)),
-            # Exited this week (+$250 vs cost; but week-start 130 -> 145 = +$150 this week).
-            Trade(user_id=user.id, action=TradeAction.SELL, ticker="NOW", quantity=10,
-                  price=145.0, fees=0, executed_at=today - timedelta(days=5)),
-            # Rebought today after the drop — should add ~$0 to the week.
-            Trade(user_id=user.id, action=TradeAction.BUY, ticker="NOW", quantity=10,
-                  price=100.0, fees=0, executed_at=today),
-        ])
-        db.commit()
-
-        email = MagicMock()
-        email.send_html.return_value = True
-        svc = DigestService(ps, email)
-
-        assert svc.send_for_user(db, user) is True
-        subject, html = email.send_html.call_args.args[1:3]
-        # True weekly P&L = +$150 (the held shares moved 130 -> 145 this week); the
-        # rebought shares net to $0. The buggy code showed -$50 (phantom -$300 on
-        # the rebuy + $250 realized).
-        assert "$150" in subject
-        assert "$150" in html
-        assert "$50" not in subject          # the buggy -$50 headline is gone
-        assert "+$250" in html               # realized this week still reported separately
 
     def test_empty_portfolio_skipped_in_batch_but_sendable_directly(self, db):
         user = _user(db)  # no trades
