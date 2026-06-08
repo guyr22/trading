@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.logging import get_logger
 from domain.finance import fifo_closed_lots
-from models import User
+from models import TradeAction, User
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
 from services.analytics_service import AnalyticsService
@@ -86,12 +86,9 @@ class DigestService:
         positions = portfolio_svc.build_positions()
 
         rows = []
-        weekly_value_change = 0.0
         for p in positions:
             wk = self._week_ago_price(p.ticker, cutoff)
             wk_pct = ((p.current_price - wk) / wk * 100) if wk else None
-            if wk:
-                weekly_value_change += p.quantity * (p.current_price - wk)
             rows.append({
                 "ticker": p.ticker,
                 "quantity": p.quantity,
@@ -152,9 +149,35 @@ class DigestService:
         except Exception as e:  # noqa: BLE001
             logger.warning("Red-flag computation failed for user %d: %s", user.id, e)
 
-        # Money gained/lost this week = this week's unrealized price move on the
-        # shares still held + P&L realized on lots closed this week.
-        weekly_pnl = weekly_value_change + realized_week
+        # Money gained/lost this week, flow-adjusted so buying or selling during
+        # the week isn't mistaken for a gain or loss. Per ticker:
+        #   contribution = current_value - value_at_week_start - net_invested
+        # where net_invested is cash put in via buys (incl. fees) minus proceeds
+        # taken out via sells (net of fees) this week. Shares bought this week net
+        # to ~0 (bought and valued at the same price); shares sold are measured
+        # from their week-start value to their actual proceeds. Summed over all
+        # tickers this equals realized + unrealized P&L for the week — computed
+        # from trades + historical prices only, no cash balance required.
+        emv_by_ticker = {p.ticker: p.market_value for p in positions}
+        weekly_pnl = 0.0
+        for ticker, trades in by_ticker.items():
+            qty_start = sum(
+                (t.quantity if t.action == TradeAction.BUY else -t.quantity)
+                for t in trades if t.executed_at < cutoff
+            )
+            bmv = 0.0
+            if qty_start:
+                wk = self._week_ago_price(ticker, cutoff)
+                if wk is None:
+                    continue  # can't value week-start holdings → leave ticker out
+                bmv = qty_start * wk
+            net_invested = sum(
+                (t.quantity * t.price + float(t.fees or 0))
+                if t.action == TradeAction.BUY
+                else -(t.quantity * t.price - float(t.fees or 0))
+                for t in trades if t.executed_at >= cutoff
+            )
+            weekly_pnl += emv_by_ticker.get(ticker, 0.0) - bmv - net_invested
 
         return {
             "today": today,
@@ -204,7 +227,7 @@ class DigestService:
                 <th style="padding:6px;font-weight:600;">Ticker</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Shares</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Price</th>
-                <th style="padding:6px;text-align:right;font-weight:600;">1-wk</th>
+                <th style="padding:6px;text-align:right;font-weight:600;">Stock 1-wk</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Mkt value</th>
                 <th style="padding:6px;text-align:right;font-weight:600;">Unreal. P&amp;L</th>
               </tr>
