@@ -155,10 +155,10 @@ class TestDigestBuilder:
     def test_movers_include_closed_trades(self, db):
         user = _user(db)
         today = date.today()
-        # Open NVDA position (~+4.1% on the week from the mocked prices)...
+        # NVDA bought this week at 100, now 151 (+$510 of P&L this week)...
         db.add(Trade(user_id=user.id, action=TradeAction.BUY, ticker="NVDA", quantity=10,
                      price=100.0, fees=0, executed_at=today - timedelta(days=3)))
-        # ...and a big realized loss closed this week (-30%).
+        # ...and a realized loss closed this week (sold 10 @70, cost 100 = -$300).
         db.add_all([
             Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=10,
                   price=100.0, fees=0, executed_at=today - timedelta(days=4)),
@@ -173,10 +173,50 @@ class TestDigestBuilder:
 
         assert svc.send_for_user(db, user) is True
         html = email.send_html.call_args.args[2]
-        # The closed AAPL loss should be the biggest drag, tagged "(closed)".
-        assert "Biggest drag" in html
-        assert "AAPL" in html
-        assert "(closed)" in html
+        # Ranked by real P&L: AAPL's closed loss (-$300) is the biggest drag,
+        # NVDA's gain since this week's buy (+$510) is the biggest gainer.
+        assert "Biggest drag <strong>AAPL</strong>" in html
+        assert "-$300" in html
+        assert "Biggest gainer <strong>NVDA</strong>" in html
+
+    def test_movers_rank_by_real_pnl_not_chart_move(self, db):
+        # Reported bug: a name exited at a profit this week then rebought after a
+        # drop must not show as the "biggest drag" from its raw chart move. Ranked
+        # by real per-stock P&L, NOW is a gainer (its exit) and a genuinely losing
+        # close (AAPL) is the drag.
+        user = _user(db)
+        today = date.today()
+        ps = MagicMock()
+        ps.get_live_prices.return_value = {"NOW": 60.0}      # today: dropped hard
+        ps.get_live_price.return_value = 60.0
+        ps.get_historical_closes.return_value = [            # ~a week ago: 130
+            ("2026-05-15", 132.0), ("2026-05-29", 130.0),
+        ]
+        db.add_all([
+            # NOW: held in, exited this week at a profit, rebought after the drop.
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="NOW", quantity=10,
+                  price=120.0, fees=0, executed_at=today - timedelta(days=30)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="NOW", quantity=10,
+                  price=145.0, fees=0, executed_at=today - timedelta(days=5)),
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="NOW", quantity=10,
+                  price=62.0, fees=0, executed_at=today),
+            # AAPL: a real losing round-trip this week (-$400).
+            Trade(user_id=user.id, action=TradeAction.BUY, ticker="AAPL", quantity=10,
+                  price=100.0, fees=0, executed_at=today - timedelta(days=6)),
+            Trade(user_id=user.id, action=TradeAction.SELL, ticker="AAPL", quantity=10,
+                  price=60.0, fees=0, executed_at=today),
+        ])
+        db.commit()
+
+        email = MagicMock()
+        email.send_html.return_value = True
+        svc = DigestService(ps, email)
+
+        assert svc.send_for_user(db, user) is True
+        html = email.send_html.call_args.args[2]
+        assert "Biggest drag <strong>AAPL</strong>" in html       # the real losing close
+        assert "Biggest drag <strong>NOW</strong>" not in html    # NOT the -54% chart drop
+        assert "Biggest gainer <strong>NOW</strong>" in html      # its exit was a real gain
 
     def test_empty_portfolio_skipped_in_batch_but_sendable_directly(self, db):
         user = _user(db)  # no trades

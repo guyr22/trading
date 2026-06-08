@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.logging import get_logger
 from domain.finance import fifo_closed_lots
-from models import User
+from models import TradeAction, User
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
 from services.analytics_service import AnalyticsService
@@ -31,10 +31,6 @@ def _money(n: float) -> str:
 
 def _signed(n: float) -> str:
     return f"+{_money(n)}" if n >= 0 else f"-{_money(abs(n))}"
-
-
-def _arrow(n: float) -> str:
-    return "▲" if n >= 0 else "▼"
 
 
 def _color(n: float) -> str:
@@ -87,13 +83,10 @@ class DigestService:
 
         rows = []
         for p in positions:
-            wk = self._week_ago_price(p.ticker, cutoff)
-            wk_pct = ((p.current_price - wk) / wk * 100) if wk else None
             rows.append({
                 "ticker": p.ticker,
                 "quantity": p.quantity,
                 "current_price": p.current_price,
-                "week_pct": wk_pct,
                 "market_value": p.market_value,
                 "unrealized_pnl": p.unrealized_pnl,
                 "unrealized_pnl_pct": p.unrealized_pnl_pct,
@@ -126,18 +119,40 @@ class DigestService:
         closed_week.sort(key=lambda r: (r["close_date"], abs(r["pnl"])), reverse=True)
         fees_week = sum(float(t.fees or 0) for t in all_trades if t.executed_at >= cutoff)
 
-        # Movers — open positions (by 1-week price move) plus lots closed this
-        # week (by realized return), so the week's biggest win/loss reflects both.
-        movers = [
-            {"ticker": r["ticker"], "pct": r["week_pct"], "kind": "held"}
-            for r in rows if r["week_pct"] is not None
-        ]
-        movers += [
-            {"ticker": c["ticker"], "pct": c["pnl_pct"], "kind": "closed"}
-            for c in closed_week
-        ]
-        best = max(movers, key=lambda m: m["pct"], default=None)
-        worst = min(movers, key=lambda m: m["pct"], default=None)
+        # Movers — rank tickers by the money actually made/lost this week, so the
+        # week's biggest win/loss reflects the holder's real experience rather than
+        # a stock's raw chart move (a name exited then rebought nets to its realized
+        # gain, not the full-week drop). Flow-adjusted per ticker:
+        #   pnl = current_value - value_at_week_start - net_invested_this_week
+        # where net_invested is cash put in via buys (incl. fees) minus proceeds
+        # taken out via sells (net of fees) this week. Trades + prices only.
+        emv_by_ticker = {p.ticker: p.market_value for p in positions}
+        movers = []
+        for ticker, trades in by_ticker.items():
+            week_trades = [t for t in trades if t.executed_at >= cutoff]
+            if ticker not in emv_by_ticker and not week_trades:
+                continue  # untouched and not held — nothing happened this week
+            qty_start = sum(
+                (t.quantity if t.action == TradeAction.BUY else -t.quantity)
+                for t in trades if t.executed_at < cutoff
+            )
+            bmv = 0.0
+            if qty_start:
+                wk = self._week_ago_price(ticker, cutoff)
+                if wk is None:
+                    continue  # can't value week-start holdings → skip this ticker
+                bmv = qty_start * wk
+            net_invested = sum(
+                (t.quantity * t.price + float(t.fees or 0))
+                if t.action == TradeAction.BUY
+                else -(t.quantity * t.price - float(t.fees or 0))
+                for t in week_trades
+            )
+            pnl = emv_by_ticker.get(ticker, 0.0) - bmv - net_invested
+            if abs(pnl) >= 0.005:
+                movers.append({"ticker": ticker, "pnl": pnl})
+        best = max(movers, key=lambda m: m["pnl"], default=None)
+        worst = min(movers, key=lambda m: m["pnl"], default=None)
 
         # Behavioral red flags (best-effort; returns [] when insufficient data).
         flags: list[str] = []
@@ -200,19 +215,27 @@ class DigestService:
         else:
             positions_block = '<p style="color:#888;font-size:14px;margin:24px 0;">No open positions this week.</p>'
 
+        # Show a gainer only if something actually gained, a drag only if something
+        # actually lost — never label a positive number a "drag".
+        b, w = d["best"], d["worst"]
+        mover_parts = []
+        if b and b["pnl"] > 0:
+            mover_parts.append(
+                f'🏆 Biggest gainer <strong>{b["ticker"]}</strong> '
+                f'<span style="color:{_color(b["pnl"])};">{_signed(b["pnl"])}</span>'
+            )
+        if w and w["pnl"] < 0:
+            mover_parts.append(
+                f'📉 Biggest drag <strong>{w["ticker"]}</strong> '
+                f'<span style="color:{_color(w["pnl"])};">{_signed(w["pnl"])}</span>'
+            )
         movers_block = ""
-        if d["best"] and d["worst"]:
-            b, w = d["best"], d["worst"]
-            b_tag = " (closed)" if b["kind"] == "closed" else ""
-            w_tag = " (closed)" if w["kind"] == "closed" else ""
+        if mover_parts:
+            joined = "\n              &nbsp;&nbsp;·&nbsp;&nbsp;\n              ".join(mover_parts)
             movers_block = f"""
             <h3 style="margin:24px 0 8px;font-size:15px;color:#111;">This week</h3>
             <p style="font-size:14px;color:#333;margin:4px 0;">
-              🏆 Biggest gainer <strong>{b['ticker']}</strong>
-              <span style="color:{_color(b['pct'])};">{_arrow(b['pct'])} {abs(b['pct']):.1f}%{b_tag}</span>
-              &nbsp;&nbsp;·&nbsp;&nbsp;
-              📉 Biggest drag <strong>{w['ticker']}</strong>
-              <span style="color:{_color(w['pct'])};">{_arrow(w['pct'])} {abs(w['pct']):.1f}%{w_tag}</span>
+              {joined}
             </p>"""
 
         realized_block = f"""
