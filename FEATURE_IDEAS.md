@@ -15,7 +15,7 @@ infrastructure that already exists.
 | 5 | Dividend tracking | 7 | 🔭 Proposed |
 | 6 | Broker CSV import | 7 | 🔭 Proposed |
 | 7 | Stop-loss / target price tracking | 7 | 🔭 Proposed |
-| 8 | Per-position weekly digest email | 6 | ✅ Shipped |
+| 8 | Per-position weekly digest email | 6 | 🗑️ Removed |
 | 9 | Watchlist for not-yet-owned tickers | 5 | 🔭 Proposed |
 | 10 | Multi-currency / FX support | 4 | 🔭 Proposed |
 
@@ -73,15 +73,15 @@ Let users attach a planned stop and target to open positions, then have analytic
 measure discipline: "you blew through your stop on 8 of 12 losers." Pairs naturally
 with the disposition-effect analysis and with price alerts (#1).
 
-### 8. Per-position weekly digest email — 6/10 ✅
+### 8. Per-position weekly digest email — 6/10 🗑️
 A scheduled weekly summary (portfolio value, per-position 1-week move, biggest
 mover, closed trades, realized P&L, behavioral red flags). Re-engagement with
 near-zero new analytics — it packages numbers already computed.
 
-> **Shipped this session.** Opt-in weekly email (Sunday 6pm Israel time) with a
-> per-position table, "this week" movers (including closed trades), a "Closed this
-> week" table, and red flags. Sends via Resend (HTTP API) because Railway blocks
-> outbound SMTP; needs `RESEND_API_KEY` on the backend.
+> **Removed.** Shipped earlier as an opt-in weekly email (Resend/SMTP transport,
+> scheduler thread, `users.digest_opt_in` column, Alerts-tab UI) but later
+> removed entirely — backend services/router, email transport, config, schema
+> column, and frontend controls all deleted.
 
 ## Lower priority (4–5)
 

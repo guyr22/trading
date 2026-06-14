@@ -10,13 +10,9 @@ import {
   subscribePush,
   unsubscribePush,
   sendTestPush,
-  fetchDigestPreference,
-  updateDigestPreference,
-  sendDigestTest,
   type PriceAlert,
   type AlertCondition,
   type VapidKey,
-  type DigestPreference,
 } from "../api";
 import { pushSupported, subscribe, unsubscribe, getExistingSubscription } from "../lib/push";
 
@@ -53,11 +49,6 @@ export default function Alerts() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
-  // weekly email digest
-  const [digest, setDigest] = useState<DigestPreference | null>(null);
-  const [digestBusy, setDigestBusy] = useState(false);
-  const [digestMsg, setDigestMsg] = useState<Status>(null);
-
   // form
   const [ticker, setTicker] = useState("");
   const [condition, setCondition] = useState<AlertCondition>("ABOVE");
@@ -78,38 +69,11 @@ export default function Alerts() {
   useEffect(() => {
     load();
     fetchVapidKey().then(setVapid).catch(() => setVapid({ public_key: null, enabled: false }));
-    fetchDigestPreference().then(setDigest).catch(() => setDigest(null));
     if (pushSupported()) {
       setPerm(Notification.permission);
       getExistingSubscription().then((s) => setSubscribed(!!s));
     }
   }, []);
-
-  const toggleDigest = async (enabled: boolean) => {
-    setDigestBusy(true);
-    setDigestMsg(null);
-    try {
-      setDigest(await updateDigestPreference(enabled));
-      setDigestMsg({ type: "success", text: enabled ? "Weekly digest on — you'll get it Sundays." : "Weekly digest off." });
-    } catch (e) {
-      setDigestMsg({ type: "error", text: e instanceof Error ? e.message : "Failed to update preference." });
-    } finally {
-      setDigestBusy(false);
-    }
-  };
-
-  const testDigest = async () => {
-    setDigestBusy(true);
-    setDigestMsg(null);
-    try {
-      await sendDigestTest();
-      setDigestMsg({ type: "success", text: "Digest email sent — check your inbox." });
-    } catch (e) {
-      setDigestMsg({ type: "error", text: e instanceof Error ? e.message : "Failed to send digest." });
-    } finally {
-      setDigestBusy(false);
-    }
-  };
 
   const enable = async () => {
     setBusy(true);
@@ -219,41 +183,6 @@ export default function Alerts() {
       {status && (
         <p className={`msg ${status.type === "error" ? "msg-error" : "msg-success"}`} style={{ marginTop: "0.5rem" }}>
           {status.text}
-        </p>
-      )}
-
-      {/* Weekly email digest */}
-      <h2 style={{ margin: "2rem 0 1rem" }}>Weekly email digest</h2>
-      <div style={rowStyle}>
-        {digest === null ? (
-          <span style={{ color: "var(--text-muted)" }}>Loading…</span>
-        ) : !digest.email_configured ? (
-          <span>⚙️ Email isn&apos;t configured on the server yet.</span>
-        ) : (
-          <>
-            <span>
-              📧 A per-position portfolio summary, emailed <strong>Sundays at 6:00 PM</strong>.
-              {digest.enabled ? " You're subscribed." : ""}
-            </span>
-            <span style={{ display: "flex", gap: "0.4rem" }}>
-              {digest.enabled && (
-                <button className="nav-btn" onClick={testDigest} disabled={digestBusy}>Send me one now</button>
-              )}
-              <button
-                className={digest.enabled ? "nav-btn" : "btn-primary"}
-                onClick={() => toggleDigest(!digest.enabled)}
-                disabled={digestBusy}
-                style={digest.enabled ? undefined : { width: "auto" }}
-              >
-                {digestBusy ? "…" : digest.enabled ? "Unsubscribe" : "Subscribe"}
-              </button>
-            </span>
-          </>
-        )}
-      </div>
-      {digestMsg && (
-        <p className={`msg ${digestMsg.type === "error" ? "msg-error" : "msg-success"}`} style={{ marginTop: "0.5rem" }}>
-          {digestMsg.text}
         </p>
       )}
 

@@ -165,15 +165,6 @@ class VapidKeyResponse(BaseModel):
     enabled: bool
 
 
-class DigestPreference(BaseModel):
-    enabled: bool                 # whether this user receives the weekly digest
-    email_configured: bool        # whether the server can actually send email
-
-
-class DigestPreferenceUpdate(BaseModel):
-    enabled: bool
-
-
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

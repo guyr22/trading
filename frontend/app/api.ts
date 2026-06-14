@@ -390,30 +390,6 @@ export async function sendTestPush(): Promise<{ sent: number }> {
   return res.json();
 }
 
-export interface DigestPreference {
-  enabled: boolean;
-  email_configured: boolean;
-}
-
-export async function fetchDigestPreference(): Promise<DigestPreference> {
-  const res = await fetch(`${API}/digest/preference`, OPTS);
-  if (!res.ok) throw new Error("Failed to fetch digest preference");
-  return res.json();
-}
-
-export async function updateDigestPreference(enabled: boolean): Promise<DigestPreference> {
-  const res = await fetch(`${API}/digest/preference`, {
-    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),
-  });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to update preference"); }
-  return res.json();
-}
-
-export async function sendDigestTest(): Promise<{ sent: boolean }> {
-  const res = await fetch(`${API}/digest/test`, { ...OPTS, method: "POST" });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Failed to send digest"); }
-  return res.json();
-}
 
 export async function fetchLeveragedEtfs(): Promise<LeveragedEtf[]> {
   const res = await fetch(`${API}/leveraged-etfs`, OPTS);
