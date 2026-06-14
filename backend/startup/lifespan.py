@@ -121,19 +121,6 @@ def _ensure_alerts_schema() -> None:
         logger.info("Created push_subscriptions table")
 
 
-def _ensure_digest_schema() -> None:
-    """Add the users.digest_opt_in column if missing (idempotent)."""
-    from sqlalchemy import inspect as sa_inspect, text
-    inspector = sa_inspect(engine)
-    if "users" not in inspector.get_table_names():
-        return
-    cols = {c["name"] for c in inspector.get_columns("users")}
-    if "digest_opt_in" not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN digest_opt_in BOOLEAN NOT NULL DEFAULT false"))
-        logger.info("Added digest_opt_in column to users")
-
-
 def _ensure_admin_user() -> None:
     """Create the admin user from env vars on first startup and assign orphaned trades to them."""
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
@@ -271,12 +258,6 @@ async def lifespan(app: FastAPI):
         raise
 
     try:
-        _ensure_digest_schema()
-    except Exception:
-        logger.error("Digest schema setup failed:\n%s", traceback.format_exc())
-        raise
-
-    try:
         _migrate_index_trades_if_needed()
     except Exception:
         logger.error("Index trade data migration failed:\n%s", traceback.format_exc())
@@ -308,12 +289,8 @@ async def lifespan(app: FastAPI):
     from services.alert_checker import alert_checker
     alert_checker.start(SessionLocal)
 
-    from services.digest_scheduler import digest_scheduler
-    digest_scheduler.start(SessionLocal)
-
     yield
 
     logger.info("Shutting down — stopping background threads")
     price_service.stop_background_refresh()
     alert_checker.stop()
-    digest_scheduler.stop()
