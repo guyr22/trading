@@ -65,7 +65,7 @@ export default function TradeForm({ onTradeCreated }: Props) {
         </div>
         <div className="form-row">
           <label>Ticker</label>
-          <input type="text" placeholder="e.g. AAPL" required maxLength={10} value={ticker} onChange={(e) => setTicker(e.target.value)} />
+          <input type="text" placeholder="e.g. AAPL" required maxLength={10} value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} />
         </div>
         <div className="form-row">
           <label>Quantity</label>

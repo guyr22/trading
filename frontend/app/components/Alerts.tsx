@@ -191,7 +191,7 @@ export default function Alerts() {
       <form className="trade-form" onSubmit={submit}>
         <div className="form-row">
           <label>Ticker</label>
-          <input type="text" placeholder="e.g. NVDA" maxLength={10} value={ticker} onChange={(e) => setTicker(e.target.value)} />
+          <input type="text" placeholder="e.g. NVDA" maxLength={10} value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} />
         </div>
         <div className="form-row">
           <label>Condition</label>

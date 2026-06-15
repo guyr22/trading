@@ -178,7 +178,7 @@ export default function History() {
               type="text"
               placeholder="Ticker"
               value={txFilter.ticker}
-              onChange={e => setTxFilter(prev => ({ ...prev, ticker: e.target.value }))}
+              onChange={e => setTxFilter(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
               style={{ width: "7rem", padding: "0.3rem 0.5rem", fontSize: "0.82rem", background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
             />
             <select
@@ -337,7 +337,7 @@ export default function History() {
                   type="text"
                   required
                   value={editState.ticker}
-                  onChange={e => setEditState(prev => prev && { ...prev, ticker: e.target.value })}
+                  onChange={e => setEditState(prev => prev && { ...prev, ticker: e.target.value.toUpperCase() })}
                 />
               </div>
               <div className="form-row">
@@ -406,7 +406,7 @@ export default function History() {
               type="text"
               placeholder="Ticker"
               value={closedFilter.ticker}
-              onChange={e => setClosedFilter(prev => ({ ...prev, ticker: e.target.value }))}
+              onChange={e => setClosedFilter(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
               style={{ width: "7rem", padding: "0.3rem 0.5rem", fontSize: "0.82rem", background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "var(--radius)" }}
             />
             <select
