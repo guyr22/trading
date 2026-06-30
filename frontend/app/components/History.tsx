@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 import { fetchTrades, fetchStatistics, deleteTrade, updateTrade, type Trade, type ClosedLot, type TradePayload } from "../api";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtPrice = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 3 });
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
 
 type View = "transactions" | "closed";
@@ -245,7 +247,7 @@ export default function History() {
                       <td><span className={`tag ${t.action === "BUY" ? "tag-buy" : "tag-sell"}`}>{t.action}</span></td>
                       <td><strong>{t.ticker}</strong></td>
                       <td>{t.quantity % 1 === 0 ? t.quantity : t.quantity.toFixed(2)}</td>
-                      <td>{fmt(t.price)}</td>
+                      <td>{fmtPrice(t.price)}</td>
                       <td>{fmt(t.quantity * t.price)}</td>
                       <td>{t.fees ? fmt(t.fees) : "—"}</td>
                       <td>{t.platform || "—"}</td>
@@ -462,8 +464,8 @@ export default function History() {
                       <td>{lot.quantity % 1 === 0 ? lot.quantity : lot.quantity.toFixed(2)}</td>
                       <td>{lot.open_date.split("-").reverse().join("-")}</td>
                       <td>{lot.close_date.split("-").reverse().join("-")}</td>
-                      <td>{fmt(lot.avg_buy_price)}</td>
-                      <td>{fmt(lot.avg_sell_price)}</td>
+                      <td>{fmtPrice(lot.avg_buy_price)}</td>
+                      <td>{fmtPrice(lot.avg_sell_price)}</td>
                       <td className={pnlClass(lot.pnl)}>{fmt(lot.pnl)}</td>
                       <td className={pnlClass(lot.pnl_pct)}>{lot.pnl_pct >= 0 ? "+" : ""}{lot.pnl_pct.toFixed(2)}%</td>
                     </tr>

@@ -6,6 +6,8 @@ import { fetchPortfolio, type PortfolioSummary, type Position } from "../api";
 import QuickTradeModal from "./QuickTradeModal";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtPrice = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 3 });
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
 
 export default function Dashboard() {
@@ -92,7 +94,7 @@ export default function Dashboard() {
                   </td>
                   <td>{p.quantity % 1 === 0 ? p.quantity : p.quantity.toFixed(2)}</td>
                   <td>{fmt(p.avg_cost)}</td>
-                  <td>{fmt(p.current_price)}</td>
+                  <td>{fmtPrice(p.current_price)}</td>
                   <td>{fmt(p.market_value)}</td>
                   <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
                   <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>

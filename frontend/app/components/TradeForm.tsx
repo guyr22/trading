@@ -73,7 +73,7 @@ export default function TradeForm({ onTradeCreated }: Props) {
         </div>
         <div className="form-row">
           <label>Price ($)</label>
-          <input type="number" min="0.01" step="0.01" required value={price} onChange={(e) => setPrice(e.target.value)} />
+          <input type="number" min="0.001" step="0.001" required value={price} onChange={(e) => setPrice(e.target.value)} />
         </div>
         <div className="form-row">
           <label>Platform</label>

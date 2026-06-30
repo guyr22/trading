@@ -6,6 +6,8 @@ import QuickTradeModal from "./QuickTradeModal";
 
 const INDEX_TICKERS = ["VOO", "SPY", "QQQ", "IBIT", "ETHA"];
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtPrice = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 3 });
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
 
 export default function Indexes() {
@@ -52,7 +54,7 @@ export default function Indexes() {
                 <>
                   <span className="card-value">{fmt(pos.market_value)}</span>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                    {pos.quantity % 1 === 0 ? pos.quantity : pos.quantity.toFixed(2)} shares @ {fmt(pos.avg_cost)}
+                    {pos.quantity % 1 === 0 ? pos.quantity : pos.quantity.toFixed(2)} shares @ {fmtPrice(pos.avg_cost)}
                   </span>
                   <span style={{ fontSize: "0.85rem", marginTop: "0.1rem" }} className={pnlClass(pos.unrealized_pnl)}>
                     {fmt(pos.unrealized_pnl)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
@@ -141,7 +143,7 @@ export default function Indexes() {
                 <td><span className={`tag ${t.action === "BUY" ? "tag-buy" : "tag-sell"}`}>{t.action}</span></td>
                 <td><strong>{t.ticker}</strong></td>
                 <td>{t.quantity % 1 === 0 ? t.quantity : t.quantity.toFixed(2)}</td>
-                <td>{fmt(t.price)}</td>
+                <td>{fmtPrice(t.price)}</td>
                 <td>{fmt(t.quantity * t.price)}</td>
                 <td>{t.fees ? fmt(t.fees) : "—"}</td>
               </tr>
