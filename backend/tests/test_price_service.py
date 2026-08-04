@@ -163,6 +163,51 @@ class TestCircuitBreaker:
             assert svc._breaker_open() is False
 
 
+class TestTickHandling:
+    """What the refresh thread decides to fetch on a given tick."""
+
+    def _open(self, flag: bool):
+        return patch("services.price_service.is_market_open", return_value=flag)
+
+    def test_during_the_session_everything_is_due(self, svc):
+        with self._open(True):
+            assert svc._due_this_tick(["AAA", "BBB"]) == ["AAA", "BBB"]
+
+    def test_outside_the_session_priced_tickers_are_left_alone(self, svc):
+        svc._price_cache["AAA"] = (10.0, time.time() - 10_000)
+        with self._open(False):
+            assert svc._due_this_tick(["AAA"]) == []
+
+    def test_never_priced_ticker_is_warmed_once_while_closed(self, svc):
+        with self._open(False):
+            # A cold cache (out-of-hours deploy) still gets one pass, so the
+            # dashboard shows the last close rather than avg cost.
+            assert svc._due_this_tick(["AAA"]) == ["AAA"]
+            # ...but only one, however long the market stays shut.
+            assert svc._due_this_tick(["AAA"]) == []
+            assert svc._due_this_tick(["AAA"]) == []
+
+    def test_ticker_appearing_while_closed_is_also_warmed(self, svc):
+        with self._open(False):
+            assert svc._due_this_tick(["AAA"]) == ["AAA"]
+            # A user logging in overnight brings new holdings into the set.
+            assert svc._due_this_tick(["AAA", "BBB"]) == ["BBB"]
+
+    def test_reopening_resumes_normal_refreshing(self, svc):
+        with self._open(False):
+            svc._due_this_tick(["AAA"])
+        with self._open(True):
+            assert svc._due_this_tick(["AAA"]) == ["AAA"]
+        # The one-shot record resets, so the next close warms afresh if needed.
+        assert svc._warmed_while_closed == set()
+
+    def test_empty_set_stays_empty(self, svc):
+        with self._open(False):
+            assert svc._due_this_tick([]) == []
+        with self._open(True):
+            assert svc._due_this_tick([]) == []
+
+
 class TestCachedReads:
     def test_get_cached_prices_never_hits_the_network(self, svc):
         svc._price_cache["AAA"] = (42.0, time.time() - 10_000)

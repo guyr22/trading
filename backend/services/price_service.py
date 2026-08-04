@@ -43,6 +43,8 @@ class PriceService:
         self._failed_at: dict[str, float] = {}
         self._cooldown_until: float = 0.0
         self._cooldown_secs: int = 0
+        # Tickers already given their one out-of-hours warm attempt.
+        self._warmed_while_closed: set[str] = set()
 
     # ---- Rate-limit breaker -------------------------------------------------
 
@@ -283,10 +285,33 @@ class PriceService:
 
         return sorted(tickers)
 
+    def _due_this_tick(self, tickers: list[str]) -> list[str]:
+        """Which of `tickers` to hand to get_live_prices on this tick.
+
+        During the session: all of them — get_live_prices filters by cache age,
+        so CACHE_TTL sets the real request rate.
+
+        Outside it: nothing, except tickers that have never been priced at all.
+        The cache is in-memory, so without that exception a deploy outside
+        trading hours — or a user logging in overnight — would show avg cost
+        instead of the last close. One attempt per ticker, tracked so it can't
+        turn into a loop, and reset when the market next opens.
+        """
+        if is_market_open():
+            self._warmed_while_closed.clear()
+            return tickers
+        pending = [
+            t for t in tickers
+            if t not in self._price_cache and t not in self._warmed_while_closed
+        ]
+        self._warmed_while_closed.update(pending)
+        return pending
+
     def _refresh_loop(self, session_factory, stop_event: threading.Event) -> None:
         stop_event.wait(5)
-        warmed = False
-        last_set: list[str] = []
+        # None rather than [] so the first pass always logs, including the idle
+        # case — otherwise "no upstream calls" and "thread wedged" look identical.
+        last_set: list[str] | None = None
         while not stop_event.is_set():
             try:
                 with session_factory() as db:
@@ -294,12 +319,9 @@ class PriceService:
                 if tickers != last_set:
                     logger.info("Price refresh set: %s", ", ".join(tickers) or "(idle)")
                     last_set = tickers
-                # One unconditional pass on startup. The cache lives in memory, so
-                # a deploy outside trading hours would otherwise leave every
-                # position showing avg cost until the market next opened.
-                if tickers and (is_market_open() or not warmed):
-                    warmed = True
-                    self.get_live_prices(tickers)
+                due = self._due_this_tick(tickers)
+                if due:
+                    self.get_live_prices(due)
             except Exception as e:
                 logger.warning("Background price refresh error: %s", e)
             stop_event.wait(PRICE_LOOP_TICK)
