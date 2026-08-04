@@ -36,7 +36,12 @@ def _add(db, **kw) -> PriceAlert:
 
 def _checker(prices: dict):
     price_svc = MagicMock()
-    price_svc.get_live_prices.return_value = prices
+    # The checker reads the shared cache and never fetches — the refresh thread
+    # owns all upstream calls. A ticker absent from `prices` models "not priced
+    # yet", which must be skipped rather than evaluated.
+    price_svc.get_cached_prices.side_effect = lambda tickers: {
+        t: prices.get(t) for t in tickers
+    }
     push_svc = MagicMock()
     push_svc.send_to_user.return_value = 1
     return AlertChecker(price_svc, push_svc), push_svc

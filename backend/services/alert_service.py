@@ -31,7 +31,7 @@ class AlertService:
     def list(self) -> list[AlertResponse]:
         alerts = self._repo.get_all()
         tickers = list({a.ticker for a in alerts})
-        prices = self._price_service.get_live_prices(tickers) if tickers else {}
+        prices = self._price_service.get_cached_prices(tickers) if tickers else {}
         return [self._to_response(a, prices.get(a.ticker)) for a in alerts]
 
     def create(self, payload: AlertCreate) -> AlertResponse:
@@ -59,13 +59,16 @@ class AlertService:
         if not alert:
             return None
         fields = {"active": active}
+        current: float | None = None
         if active:
-            # Re-arming: clear the fired state and re-baseline against the live price.
+            # Re-arming: clear the fired state and re-baseline against the live
+            # price. Worth a real fetch — a stale baseline could miss a crossing.
             current = self._price_service.get_live_price(alert.ticker)
             fields.update(triggered_at=None, last_price=current)
         alert = self._repo.update(alert, **fields)
-        price = self._price_service.get_live_price(alert.ticker)
-        return self._to_response(alert, price)
+        if current is None:
+            current = self._price_service.get_cached_prices([alert.ticker])[alert.ticker]
+        return self._to_response(alert, current)
 
     def delete(self, alert_id: int) -> bool:
         alert = self._repo.get_by_id(alert_id)

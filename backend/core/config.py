@@ -1,9 +1,14 @@
 import os
 
 INDEX_TICKERS_SET: frozenset[str] = frozenset({"VOO", "SPY", "QQQ", "IBIT", "ETHA"})
-CACHE_TTL: int = 60               # seconds before a cached price is stale
-PRICE_REFRESH_INTERVAL: int = 55  # background thread refresh cadence
+# CACHE_TTL is the real upstream request rate: the refresh thread only issues a
+# call for a ticker whose cached price has aged past it. PRICE_LOOP_TICK is just
+# how often that thread wakes to look for work, so a newly-online user's holdings
+# get priced within a tick rather than waiting out a full TTL.
+CACHE_TTL: int = 180
+PRICE_LOOP_TICK: int = 15
 ALERT_CHECK_INTERVAL: int = 60    # background cadence for evaluating price alerts
+ACTIVITY_WINDOW: int = 300        # a user counts as online this long after their last request
 # A ticker whose fetch just failed is left alone this long. Without it a failing
 # ticker never populates the cache, so every caller counts it as a miss and
 # retries immediately — which is what turns one upstream 429 into a permanent one.

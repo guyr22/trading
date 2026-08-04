@@ -6,14 +6,16 @@ from datetime import date
 import yfinance as yf
 
 from core.config import (
+    ACTIVITY_WINDOW,
     BREAKER_BASE_COOLDOWN,
     BREAKER_MAX_COOLDOWN,
     CACHE_TTL,
     HIST_CACHE_TTL,
     NEGATIVE_CACHE_TTL,
-    PRICE_REFRESH_INTERVAL,
+    PRICE_LOOP_TICK,
 )
 from core.logging import get_logger
+from core.market_hours import is_market_open
 
 logger = get_logger(__name__)
 
@@ -244,30 +246,63 @@ class PriceService:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def _refresh_loop(self, session_factory, stop_event: threading.Event) -> None:
-        from models import Trade, TradeAction
+    @staticmethod
+    def tickers_to_refresh(db) -> list[str]:
+        """The set worth pricing right now: every active alert's ticker, plus the
+        open positions of users who have used the app recently.
+
+        Alert tickers are unconditional — an alert has to fire whether or not
+        anyone is logged in. Holdings are activity-scoped, so an idle deployment
+        makes no upstream calls at all.
+        """
+        from core.activity import activity_tracker
+        from models import PriceAlert, Trade, TradeAction
         from sqlalchemy import case, func
 
+        tickers = {
+            row[0] for row in
+            db.query(PriceAlert.ticker).filter(PriceAlert.active.is_(True)).distinct()
+        }
+
+        active_users = activity_tracker.active_users(ACTIVITY_WINDOW)
+        if active_users:
+            # Grouped per user as well as per ticker: aggregating across users
+            # would let one account's short position cancel out another's long
+            # and drop a genuinely held ticker from the refresh set.
+            rows = db.query(
+                Trade.user_id,
+                Trade.ticker,
+                func.sum(
+                    case(
+                        (Trade.action == TradeAction.BUY, Trade.quantity),
+                        else_=-Trade.quantity,
+                    )
+                ).label("net_qty"),
+            ).filter(Trade.user_id.in_(active_users)).group_by(Trade.user_id, Trade.ticker).all()
+            tickers.update(row.ticker for row in rows if (row.net_qty or 0) > 0)
+
+        return sorted(tickers)
+
+    def _refresh_loop(self, session_factory, stop_event: threading.Event) -> None:
         stop_event.wait(5)
+        warmed = False
+        last_set: list[str] = []
         while not stop_event.is_set():
             try:
                 with session_factory() as db:
-                    rows = db.query(
-                        Trade.ticker,
-                        func.sum(
-                            case(
-                                (Trade.action == TradeAction.BUY, Trade.quantity),
-                                else_=-Trade.quantity,
-                            )
-                        ).label("net_qty"),
-                    ).group_by(Trade.ticker).all()
-                tickers = [row.ticker for row in rows if (row.net_qty or 0) > 0]
-                if tickers:
-                    logger.info("Background price refresh for: %s", ", ".join(tickers))
+                    tickers = self.tickers_to_refresh(db)
+                if tickers != last_set:
+                    logger.info("Price refresh set: %s", ", ".join(tickers) or "(idle)")
+                    last_set = tickers
+                # One unconditional pass on startup. The cache lives in memory, so
+                # a deploy outside trading hours would otherwise leave every
+                # position showing avg cost until the market next opened.
+                if tickers and (is_market_open() or not warmed):
+                    warmed = True
                     self.get_live_prices(tickers)
             except Exception as e:
                 logger.warning("Background price refresh error: %s", e)
-            stop_event.wait(PRICE_REFRESH_INTERVAL)
+            stop_event.wait(PRICE_LOOP_TICK)
 
 
 # Module-level singleton — one cache shared across all requests

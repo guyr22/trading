@@ -11,6 +11,7 @@ from datetime import datetime
 
 from core.config import ALERT_CHECK_INTERVAL
 from core.logging import get_logger
+from core.market_hours import is_market_open
 from models import AlertCondition, PriceAlert
 from repositories.alert_repository import AlertRepository
 from services.price_service import PriceService
@@ -49,8 +50,11 @@ class AlertChecker:
         stop_event.wait(10)  # let startup settle before the first pass
         while not stop_event.is_set():
             try:
-                with session_factory() as db:
-                    self.check_once(db)
+                # A price can't cross a target while the market is shut, so
+                # evaluating outside the session only burns cycles.
+                if is_market_open():
+                    with session_factory() as db:
+                        self.check_once(db)
             except Exception as e:  # noqa: BLE001 — keep the loop alive
                 logger.warning("Alert check pass failed: %s", e)
             stop_event.wait(ALERT_CHECK_INTERVAL)
@@ -64,7 +68,10 @@ class AlertChecker:
             return 0
 
         tickers = list({a.ticker for a in alerts})
-        prices = self._price_service.get_live_prices(tickers)
+        # Read-only: the refresh thread owns fetching and always includes active
+        # alert tickers, so this sees a price at most one refresh cycle old.
+        # A ticker with no cached price yet is skipped below rather than fired on.
+        prices = self._price_service.get_cached_prices(tickers)
 
         to_fire: list[tuple[PriceAlert, float]] = []
         for alert in alerts:

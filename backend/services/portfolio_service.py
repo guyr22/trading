@@ -39,7 +39,9 @@ class PortfolioService:
         if not held:
             return [], total_realized
 
-        prices = self._price_service.get_live_prices([t for t, _, _ in held])
+        # Cache-only: page loads must never drive upstream traffic, or N open
+        # tabs become N concurrent fetch storms. The refresh thread keeps this warm.
+        prices = self._price_service.get_cached_prices([t for t, _, _ in held])
         lev_map = self._etf_repo.get_map()
 
         positions: list[PositionResponse] = []
@@ -119,7 +121,9 @@ class PortfolioService:
                 positions=[],
             )
 
-        prices = self._price_service.get_live_prices([t for t, _, _ in held])
+        # Cache-only: page loads must never drive upstream traffic, or N open
+        # tabs become N concurrent fetch storms. The refresh thread keeps this warm.
+        prices = self._price_service.get_cached_prices([t for t, _, _ in held])
         positions: list[PositionResponse] = []
         for ticker, qty, avg in held:
             current_price = prices.get(ticker) or avg

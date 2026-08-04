@@ -3,6 +3,7 @@ from jose import JWTError
 from sqlalchemy.orm import Session
 
 from auth.utils import decode_access_token
+from core.activity import activity_tracker
 from database import get_db
 from models import User
 
@@ -21,6 +22,9 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Marks the user as online so the price refresh thread knows their holdings
+    # are worth pricing. Every authenticated route resolves through here.
+    activity_tracker.touch(user.id)
     return user
 
 

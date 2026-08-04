@@ -82,10 +82,37 @@ Full-stack trading portfolio tracker with separate backend and frontend servers.
 ## Key Design Decisions
 
 - No cash/account management — the app tracks positions and P&L only
-- Live prices fetched via yfinance with 30-second cache; falls back to avg cost on failure
+- Live prices fetched via yfinance by a single background thread — see **Price fetching** below
 - Positions are computed dynamically from the trades table (no separate positions table)
 - Database is SQLite locally / PostgreSQL in Docker; schema managed by **Alembic** — migrations run automatically on startup via `alembic upgrade head`
 - **Index funds** (`VOO`, `SPY`, `QQQ`, `IBIT`, `ETHA`) are tracked but excluded from all statistics, dashboard totals, and chat context — see `INDEX_TICKERS_SET` in `main.py`
+
+### Price fetching
+
+Yahoo rate-limits per IP, and Railway's egress IP is shared, so the budget is
+tight. Everything below exists to keep upstream request volume proportional to
+actual use. The rules:
+
+- **One fetcher.** Only `PriceService._refresh_loop` calls Yahoo for quotes.
+  Request handlers use `get_cached_prices()`, which never touches the network —
+  otherwise N open browser tabs become N concurrent fetch storms.
+- **`CACHE_TTL` is the request rate; `PRICE_LOOP_TICK` is the responsiveness.**
+  The thread wakes every 15s but only fetches tickers whose price has aged past
+  180s. A newly-online user's holdings get priced within a tick.
+- **What gets fetched** (`PriceService.tickers_to_refresh`): active alert
+  tickers always, plus open positions of users seen in the last `ACTIVITY_WINDOW`.
+  An idle deployment makes zero upstream calls.
+- **Market hours only** (`core/market_hours.py`), with one unconditional pass on
+  startup so a deploy outside trading hours doesn't leave the cache empty.
+- **Rate-limit handling.** A failed ticker is negative-cached for
+  `NEGATIVE_CACHE_TTL`; a rate-limit response opens a service-wide cooldown
+  (`BREAKER_BASE_COOLDOWN`, doubling to `BREAKER_MAX_COOLDOWN`). Cached prices
+  are served throughout. Never remove the negative cache — without it a failure
+  leaves no cache entry, every caller counts a miss and refetches immediately,
+  and one 429 becomes permanent.
+
+Note that `yf.Tickers()` is **not** a batch request — it issues one HTTP call
+per ticker. Don't assume adding tickers to a "batch" is free.
 
 ### FIFO Logic
 
