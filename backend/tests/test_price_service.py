@@ -1,0 +1,191 @@
+"""Tests for PriceService's rate-limit defences.
+
+These cover the failure mode that took live prices down in production: a Yahoo 429
+left no cache entry behind, so every caller counted the ticker as a miss and
+refetched it immediately, and the app hammered upstream harder while broken than
+while healthy. The guarantees asserted here are (a) a failed ticker is not retried
+straight away, (b) one rejection pauses the whole service instead of N-1 more
+doomed requests, and (c) cached prices keep being served throughout.
+"""
+from __future__ import annotations
+
+import time
+from unittest.mock import MagicMock, PropertyMock, patch
+
+import pytest
+
+from core.config import BREAKER_BASE_COOLDOWN
+from services.price_service import PriceService, _is_rate_limited
+
+
+RATE_LIMIT = Exception("Too Many Requests. Rate limited. Try after a while.")
+
+
+def _fake_tickers(prices: dict[str, float | Exception]):
+    """Stand in for yf.Tickers — .tickers[t].fast_info['lastPrice'] per ticker."""
+    holder = MagicMock()
+    holder.tickers = {}
+    for ticker, outcome in prices.items():
+        entry = MagicMock()
+        if isinstance(outcome, Exception):
+            entry.fast_info.__getitem__.side_effect = outcome
+        else:
+            entry.fast_info.__getitem__.return_value = outcome
+        holder.tickers[ticker] = entry
+    return holder
+
+
+@pytest.fixture
+def svc() -> PriceService:
+    return PriceService()
+
+
+class TestRateLimitDetection:
+    @pytest.mark.parametrize("msg", [
+        "Too Many Requests. Rate limited. Try after a while.",
+        "429 Client Error",
+        "YFRateLimitError: rate-limit exceeded",
+    ])
+    def test_recognises_rate_limit(self, msg):
+        assert _is_rate_limited(Exception(msg)) is True
+
+    def test_ignores_unrelated_errors(self):
+        assert _is_rate_limited(Exception("Connection reset by peer")) is False
+
+
+class TestNegativeCaching:
+    def test_failed_ticker_is_not_immediately_retried(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+            svc.get_live_prices(["AAA"])
+            assert yft.call_count == 1
+
+            # Second pass: still inside the cool-off, so no upstream call at all.
+            svc.get_live_prices(["AAA"])
+            assert yft.call_count == 1
+
+    def test_retries_once_the_cool_off_expires(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+            svc.get_live_prices(["AAA"])
+
+            # Age both the per-ticker cool-off and the service-wide cooldown out.
+            svc._failed_at["AAA"] -= 10_000
+            svc._cooldown_until = 0.0
+
+            yft.return_value = _fake_tickers({"AAA": 12.5})
+            assert svc.get_live_prices(["AAA"]) == {"AAA": 12.5}
+            assert yft.call_count == 2
+
+    def test_success_clears_the_failure_marker(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+            svc.get_live_prices(["AAA"])
+            assert "AAA" in svc._failed_at
+
+            svc._failed_at["AAA"] -= 10_000
+            svc._cooldown_until = 0.0
+            yft.return_value = _fake_tickers({"AAA": 30.0})
+            svc.get_live_prices(["AAA"])
+            assert "AAA" not in svc._failed_at
+
+
+class TestCircuitBreaker:
+    def test_first_rejection_aborts_the_rest_of_the_pass(self, svc):
+        tickers = ["AAA", "BBB", "CCC", "DDD"]
+        holder = _fake_tickers({t: RATE_LIMIT for t in tickers})
+
+        with patch("services.price_service.yf.Tickers", return_value=holder):
+            svc.get_live_prices(tickers)
+
+        # Only the first ticker should have been asked for; the breaker opened
+        # and the remaining three were skipped rather than each firing a request.
+        attempted = [t for t in tickers if holder.tickers[t].fast_info.__getitem__.called]
+        assert attempted == ["AAA"]
+
+    def test_open_breaker_blocks_further_fetches(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+            svc.get_live_prices(["AAA"])
+            assert svc._breaker_open() is True
+
+            # A different, never-failed ticker is still blocked — the pause is
+            # service-wide because the limit is enforced per IP, not per symbol.
+            svc.get_live_prices(["ZZZ"])
+            assert yft.call_count == 1
+
+    def test_stale_prices_are_served_while_the_breaker_is_open(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": 100.0})
+            assert svc.get_live_prices(["AAA"]) == {"AAA": 100.0}
+
+            # Age the cached price past its TTL, then start failing.
+            svc._price_cache["AAA"] = (100.0, time.time() - 10_000)
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+
+            # The dashboard keeps the last known price instead of falling back to
+            # avg cost, which is the whole point of degrading rather than failing.
+            assert svc.get_live_prices(["AAA"]) == {"AAA": 100.0}
+            assert svc.get_live_prices(["AAA"]) == {"AAA": 100.0}
+
+    def test_backoff_escalates_once_per_pass_not_once_per_ticker(self, svc):
+        tickers = ["AAA", "BBB", "CCC"]
+        with patch("services.price_service.yf.Tickers",
+                   return_value=_fake_tickers({t: RATE_LIMIT for t in tickers})):
+            svc.get_live_prices(tickers)
+
+        # Three rejected tickers in one pass must not compound to BASE * 2^3.
+        assert svc._cooldown_secs == BREAKER_BASE_COOLDOWN
+
+    def test_backoff_doubles_across_separate_passes(self, svc):
+        with patch("services.price_service.yf.Tickers",
+                   return_value=_fake_tickers({"AAA": RATE_LIMIT})):
+            svc.get_live_prices(["AAA"])
+            assert svc._cooldown_secs == BREAKER_BASE_COOLDOWN
+
+            # Let the cooldown lapse and fail again — the pause should widen.
+            svc._cooldown_until = 0.0
+            svc._failed_at.clear()
+            svc.get_live_prices(["AAA"])
+            assert svc._cooldown_secs == BREAKER_BASE_COOLDOWN * 2
+
+    def test_success_resets_the_backoff(self, svc):
+        with patch("services.price_service.yf.Tickers") as yft:
+            yft.return_value = _fake_tickers({"AAA": RATE_LIMIT})
+            svc.get_live_prices(["AAA"])
+
+            svc._cooldown_until = 0.0
+            svc._failed_at.clear()
+            yft.return_value = _fake_tickers({"AAA": 55.0})
+            svc.get_live_prices(["AAA"])
+
+            assert svc._cooldown_secs == 0
+            assert svc._breaker_open() is False
+
+
+class TestCachedReads:
+    def test_get_cached_prices_never_hits_the_network(self, svc):
+        svc._price_cache["AAA"] = (42.0, time.time() - 10_000)
+        with patch("services.price_service.yf.Tickers") as yft:
+            assert svc.get_cached_prices(["AAA", "BBB"]) == {"AAA": 42.0, "BBB": None}
+            yft.assert_not_called()
+
+
+class TestTickerInfo:
+    def test_rate_limited_info_is_not_cached_permanently(self, svc):
+        handle = MagicMock()
+        type(handle).info = PropertyMock(side_effect=RATE_LIMIT)
+        with patch("services.price_service.yf.Ticker", return_value=handle):
+            assert svc.get_ticker_info("AAA") == {"sector": "", "marketCap": 0}
+
+        # A blank result must not have been memoised, or the ticker would show no
+        # sector or market cap until the process restarts.
+        assert "AAA" not in svc._ticker_info_cache
+
+    def test_ordinary_failure_is_cached_to_avoid_refetching(self, svc):
+        handle = MagicMock()
+        type(handle).info = PropertyMock(side_effect=Exception("no such symbol"))
+        with patch("services.price_service.yf.Ticker", return_value=handle):
+            assert svc.get_ticker_info("AAA") == {"sector": "", "marketCap": 0}
+
+        assert svc._ticker_info_cache["AAA"] == {"sector": "", "marketCap": 0}

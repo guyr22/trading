@@ -5,10 +5,26 @@ from datetime import date
 
 import yfinance as yf
 
-from core.config import CACHE_TTL, HIST_CACHE_TTL, PRICE_REFRESH_INTERVAL
+from core.config import (
+    BREAKER_BASE_COOLDOWN,
+    BREAKER_MAX_COOLDOWN,
+    CACHE_TTL,
+    HIST_CACHE_TTL,
+    NEGATIVE_CACHE_TTL,
+    PRICE_REFRESH_INTERVAL,
+)
 from core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Yahoo surfaces a rate-limit rejection as a plain exception through yfinance
+# rather than a typed error, so it has to be recognised from the message.
+_RATE_LIMIT_MARKERS = ("too many requests", "rate limit", "rate-limit", "429")
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _RATE_LIMIT_MARKERS)
 
 
 class PriceService:
@@ -19,22 +35,87 @@ class PriceService:
         self._hist_cache: dict[str, tuple[list[tuple[str, float]], float, date]] = {}
         self._stop_event: threading.Event | None = None
         self._thread: threading.Thread | None = None
+        # Rate-limit defences. _failed_at holds the last failure per ticker;
+        # _cooldown_until is a service-wide pause covering every upstream call.
+        self._lock = threading.RLock()
+        self._failed_at: dict[str, float] = {}
+        self._cooldown_until: float = 0.0
+        self._cooldown_secs: int = 0
+
+    # ---- Rate-limit breaker -------------------------------------------------
+
+    def _breaker_open(self, now: float | None = None) -> bool:
+        with self._lock:
+            return (now or time.time()) < self._cooldown_until
+
+    def _note_rate_limit(self) -> None:
+        """Open (or extend) the cooldown. Idempotent while already open, so a pass
+        that gets rejected on ten tickers escalates the backoff once, not ten times."""
+        with self._lock:
+            now = time.time()
+            if now < self._cooldown_until:
+                return
+            self._cooldown_secs = (
+                min(self._cooldown_secs * 2, BREAKER_MAX_COOLDOWN)
+                if self._cooldown_secs
+                else BREAKER_BASE_COOLDOWN
+            )
+            self._cooldown_until = now + self._cooldown_secs
+            logger.warning(
+                "Upstream rate limit hit — pausing all price fetches for %ds (serving cached prices)",
+                self._cooldown_secs,
+            )
+
+    def _note_success(self) -> None:
+        with self._lock:
+            if self._cooldown_secs:
+                logger.info("Upstream price fetches recovered — cooldown cleared")
+            self._cooldown_secs = 0
+            self._cooldown_until = 0.0
+
+    def _recently_failed(self, ticker: str, now: float) -> bool:
+        with self._lock:
+            failed_at = self._failed_at.get(ticker)
+        return failed_at is not None and now - failed_at < NEGATIVE_CACHE_TTL
+
+    def _record_success(self, ticker: str, price: float) -> None:
+        with self._lock:
+            self._price_cache[ticker] = (price, time.time())
+            self._failed_at.pop(ticker, None)
+        self._note_success()
+
+    def _record_failure(self, ticker: str, exc: Exception) -> None:
+        with self._lock:
+            self._failed_at[ticker] = time.time()
+        logger.warning("Price fetch failed for %s: %s", ticker, exc)
+        if _is_rate_limited(exc):
+            self._note_rate_limit()
 
     # ---- Live prices --------------------------------------------------------
+
+    def get_cached_prices(self, tickers: list[str]) -> dict[str, float | None]:
+        """Last known price per ticker, ignoring staleness and never touching the
+        network. Request handlers use this so page loads can't drive upstream traffic."""
+        with self._lock:
+            return {t: (self._price_cache[t][0] if t in self._price_cache else None) for t in tickers}
 
     def get_live_price(self, ticker: str) -> float | None:
         now = time.time()
         cached = self._price_cache.get(ticker)
         if cached and now - cached[1] < CACHE_TTL:
             return cached[0]
+
+        stale = cached[0] if cached else None
+        if self._recently_failed(ticker, now) or self._breaker_open(now):
+            return stale
         try:
             price = float(yf.Ticker(ticker).fast_info["lastPrice"])
-            self._price_cache[ticker] = (price, now)
-            logger.info("Price fetched  %s = $%.2f", ticker, price)
-            return price
         except Exception as e:
-            logger.warning("Price fetch failed for %s: %s", ticker, e)
-            return cached[0] if cached else None
+            self._record_failure(ticker, e)
+            return stale
+        self._record_success(ticker, price)
+        logger.info("Price fetched  %s = $%.2f", ticker, price)
+        return price
 
     def get_live_prices(self, tickers: list[str]) -> dict[str, float | None]:
         now = time.time()
@@ -45,27 +126,39 @@ class PriceService:
             cached = self._price_cache.get(t)
             if cached and now - cached[1] < CACHE_TTL:
                 results[t] = cached[0]
-            else:
+                continue
+            # Stale or absent: serve the last known price and queue a refetch,
+            # unless this ticker just failed and is still in its cool-off.
+            results[t] = cached[0] if cached else None
+            if not self._recently_failed(t, now):
                 to_fetch.append(t)
 
-        if to_fetch:
-            logger.info("Fetching live prices for: %s", ", ".join(to_fetch))
+        if not to_fetch or self._breaker_open(now):
+            return results
+
+        logger.info("Fetching live prices for: %s", ", ".join(to_fetch))
+        try:
+            data = yf.Tickers(" ".join(to_fetch))
+        except Exception as e:
+            logger.warning("Batch price fetch failed: %s", e)
+            if _is_rate_limited(e):
+                self._note_rate_limit()
+            return results
+
+        for t in to_fetch:
+            # yfinance issues one HTTP call per ticker here, so re-check the
+            # breaker each time: the first 429 aborts the rest of the pass
+            # instead of firing another N doomed requests at Yahoo.
+            if self._breaker_open():
+                logger.warning("Aborting price pass after rate limit — %s not fetched", t)
+                break
             try:
-                data = yf.Tickers(" ".join(to_fetch))
-                for t in to_fetch:
-                    try:
-                        price = float(data.tickers[t].fast_info["lastPrice"])
-                        self._price_cache[t] = (price, now)
-                        results[t] = price
-                    except Exception as e:
-                        logger.warning("Price fetch failed for %s: %s", t, e)
-                        cached = self._price_cache.get(t)
-                        results[t] = cached[0] if cached else None
+                price = float(data.tickers[t].fast_info["lastPrice"])
             except Exception as e:
-                logger.warning("Batch price fetch failed: %s", e)
-                for t in to_fetch:
-                    cached = self._price_cache.get(t)
-                    results[t] = cached[0] if cached else None
+                self._record_failure(t, e)
+                continue
+            self._record_success(t, price)
+            results[t] = price
 
         return results
 
@@ -81,6 +174,8 @@ class PriceService:
         cached = self._hist_cache.get(ticker)
         if cached and now - cached[1] < HIST_CACHE_TTL and cached[2] <= start:
             return cached[0]
+        if self._breaker_open(now):
+            return cached[0] if cached else []
         try:
             df = yf.Ticker(ticker).history(start=start.isoformat())
             series = [(idx.strftime("%Y-%m-%d"), float(row["Close"])) for idx, row in df.iterrows()]
@@ -91,26 +186,39 @@ class PriceService:
             logger.warning("Historical closes empty for %s from %s", ticker, start)
         except Exception as e:
             logger.warning("Historical close fetch failed for %s: %s", ticker, e)
+            if _is_rate_limited(e):
+                self._note_rate_limit()
         return cached[0] if cached else []
 
     # ---- Ticker info (sector / market cap) ----------------------------------
 
+    _EMPTY_INFO = {"sector": "", "marketCap": 0}
+
     def get_ticker_info(self, ticker: str) -> dict:
-        if ticker not in self._ticker_info_cache:
-            try:
-                info = yf.Ticker(ticker).info
-                self._ticker_info_cache[ticker] = {
-                    "sector": info.get("sector", ""),
-                    "marketCap": info.get("marketCap", 0) or 0,
-                }
-            except Exception:
-                self._ticker_info_cache[ticker] = {"sector": "", "marketCap": 0}
+        if ticker in self._ticker_info_cache:
+            return self._ticker_info_cache[ticker]
+        if self._breaker_open():
+            return dict(self._EMPTY_INFO)
+        try:
+            info = yf.Ticker(ticker).info
+        except Exception as e:
+            if _is_rate_limited(e):
+                # Don't cache a rate-limited miss — that would blank out the
+                # ticker's sector and market cap for the lifetime of the process.
+                self._note_rate_limit()
+                return dict(self._EMPTY_INFO)
+            self._ticker_info_cache[ticker] = dict(self._EMPTY_INFO)
+            return self._ticker_info_cache[ticker]
+        self._ticker_info_cache[ticker] = {
+            "sector": info.get("sector", ""),
+            "marketCap": info.get("marketCap", 0) or 0,
+        }
         return self._ticker_info_cache[ticker]
 
     def prefetch_ticker_info(self, tickers: list[str]) -> None:
         """Fetch .info for all uncached tickers in parallel (up to 10 threads)."""
         to_fetch = [t for t in tickers if t not in self._ticker_info_cache]
-        if not to_fetch:
+        if not to_fetch or self._breaker_open():
             return
         with ThreadPoolExecutor(max_workers=min(len(to_fetch), 10)) as pool:
             futures = {pool.submit(self.get_ticker_info, t): t for t in to_fetch}
