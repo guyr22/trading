@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from auth.dependencies import get_current_user
+from core.activity import SCOPE_INDEXES, activity_tracker
 from core.config import BENCHMARK_TICKERS
 from dependencies import get_index_trade_repo, get_portfolio_service, get_statistics_service
+from models import User
 from repositories.index_trade_repository import IndexTradeRepository
 from schemas import BenchmarkComparison, PortfolioStatistics, PortfolioSummary
 from services.portfolio_service import PortfolioService
@@ -19,7 +22,12 @@ def get_portfolio(portfolio_svc: PortfolioService = Depends(get_portfolio_servic
 def get_index_portfolio(
     index_trade_repo: IndexTradeRepository = Depends(get_index_trade_repo),
     portfolio_svc: PortfolioService = Depends(get_portfolio_service),
+    current_user: User = Depends(get_current_user),
 ):
+    # Index funds are excluded from the dashboard, so nothing else would ever
+    # ask for their prices. Hitting this endpoint is the signal that they are
+    # worth refreshing; the background thread picks them up on its next tick.
+    activity_tracker.touch(current_user.id, SCOPE_INDEXES)
     trades = index_trade_repo.get_all_ordered()
     return portfolio_svc.build_index_summary(trades)
 

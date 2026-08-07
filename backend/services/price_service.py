@@ -255,11 +255,29 @@ class PriceService:
 
         Alert tickers are unconditional — an alert has to fire whether or not
         anyone is logged in. Holdings are activity-scoped, so an idle deployment
-        makes no upstream calls at all.
+        makes no upstream calls at all. Index funds are scoped more tightly
+        still: they are excluded from the dashboard, so they are only priced
+        while someone has the Indexes page open.
         """
-        from core.activity import activity_tracker
-        from models import PriceAlert, Trade, TradeAction
+        from core.activity import SCOPE_INDEXES, activity_tracker
+        from models import IndexTrade, PriceAlert, Trade, TradeAction
         from sqlalchemy import case, func
+
+        def _net_held(model, user_ids: set[int]) -> set[str]:
+            # Grouped per user as well as per ticker: aggregating across users
+            # would let one account's short position cancel out another's long
+            # and drop a genuinely held ticker from the refresh set.
+            rows = db.query(
+                model.user_id,
+                model.ticker,
+                func.sum(
+                    case(
+                        (model.action == TradeAction.BUY, model.quantity),
+                        else_=-model.quantity,
+                    )
+                ).label("net_qty"),
+            ).filter(model.user_id.in_(user_ids)).group_by(model.user_id, model.ticker).all()
+            return {row.ticker for row in rows if (row.net_qty or 0) > 0}
 
         tickers = {
             row[0] for row in
@@ -268,20 +286,11 @@ class PriceService:
 
         active_users = activity_tracker.active_users(ACTIVITY_WINDOW)
         if active_users:
-            # Grouped per user as well as per ticker: aggregating across users
-            # would let one account's short position cancel out another's long
-            # and drop a genuinely held ticker from the refresh set.
-            rows = db.query(
-                Trade.user_id,
-                Trade.ticker,
-                func.sum(
-                    case(
-                        (Trade.action == TradeAction.BUY, Trade.quantity),
-                        else_=-Trade.quantity,
-                    )
-                ).label("net_qty"),
-            ).filter(Trade.user_id.in_(active_users)).group_by(Trade.user_id, Trade.ticker).all()
-            tickers.update(row.ticker for row in rows if (row.net_qty or 0) > 0)
+            tickers.update(_net_held(Trade, active_users))
+
+        index_viewers = activity_tracker.active_users(ACTIVITY_WINDOW, SCOPE_INDEXES)
+        if index_viewers:
+            tickers.update(_net_held(IndexTrade, index_viewers))
 
         return sorted(tickers)
 

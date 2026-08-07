@@ -104,6 +104,12 @@ actual use. The rules:
 - **What gets fetched** (`PriceService.tickers_to_refresh`): active alert
   tickers always, plus open positions of users seen in the last `ACTIVITY_WINDOW`.
   An idle deployment makes zero upstream calls.
+- **Index funds are scoped to their own page.** They're excluded from the
+  dashboard, so nothing else asks for their prices. `GET /api/index-portfolio`
+  records `SCOPE_INDEXES` activity (`core/activity.py`) and the refresh thread
+  prices `index_trades` holdings only while that scope is warm. The Indexes page
+  must therefore keep polling — a single fetch would only ever render the cold
+  response. Same applies to any future page with its own ticker set.
 - **Market hours only** (`core/market_hours.py`), with one unconditional pass on
   startup so a deploy outside trading hours doesn't leave the cache empty.
 - **Rate-limit handling.** A failed ticker is negative-cached for

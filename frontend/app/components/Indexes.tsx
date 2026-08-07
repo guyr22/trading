@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createIndexTrade, fetchIndexPortfolio, fetchIndexTrades, type PortfolioSummary, type Trade } from "../api";
 import QuickTradeModal from "./QuickTradeModal";
 
@@ -15,17 +15,21 @@ export default function Indexes() {
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [modal, setModal] = useState<{ action: "BUY" | "SELL"; ticker: string; price: number } | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     Promise.all([fetchIndexPortfolio(), fetchIndexTrades()])
       .then(([p, t]) => { setPortfolio(p); setTrades(t); })
       .catch(console.error);
   }, []);
 
-  const reload = () => {
-    Promise.all([fetchIndexPortfolio(), fetchIndexTrades()])
-      .then(([p, t]) => { setPortfolio(p); setTrades(t); })
-      .catch(console.error);
-  };
+  // Poll like the Dashboard does. The backend only fetches index prices while
+  // this page is being viewed, and it does so on a background thread — so
+  // without a repeat request the first (cold) response would be the only one
+  // we ever render, showing avg cost indefinitely.
+  useEffect(() => {
+    reload();
+    const interval = setInterval(reload, 30000);
+    return () => clearInterval(interval);
+  }, [reload]);
 
   if (!portfolio || !trades) return <p className="empty-msg">Loading...</p>;
 

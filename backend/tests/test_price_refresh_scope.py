@@ -11,10 +11,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from core.activity import ActivityTracker
+from core.activity import SCOPE_APP, SCOPE_INDEXES, ActivityTracker
 from core.config import ACTIVITY_WINDOW
 from database import Base
-from models import AlertCondition, PriceAlert, Trade, TradeAction
+from models import AlertCondition, IndexTrade, PriceAlert, Trade, TradeAction
 from services.price_service import PriceService
 
 
@@ -37,6 +37,11 @@ def fresh_tracker(monkeypatch):
 
 def _trade(db, user_id: int, ticker: str, qty: float, action=TradeAction.BUY) -> None:
     db.add(Trade(user_id=user_id, ticker=ticker, quantity=qty, price=10.0, action=action))
+    db.commit()
+
+
+def _index_trade(db, user_id: int, ticker: str, qty: float, action=TradeAction.BUY) -> None:
+    db.add(IndexTrade(user_id=user_id, ticker=ticker, quantity=qty, price=10.0, action=action))
     db.commit()
 
 
@@ -65,7 +70,7 @@ class TestActivityScoping:
     def test_activity_expires(self, db, fresh_tracker):
         _trade(db, 1, "AAA", 10)
         fresh_tracker.touch(1)
-        fresh_tracker._last_seen[1] -= ACTIVITY_WINDOW + 1
+        fresh_tracker._last_seen[(SCOPE_APP, 1)] -= ACTIVITY_WINDOW + 1
         assert PriceService.tickers_to_refresh(db) == []
 
     def test_fully_closed_position_is_not_refreshed(self, db, fresh_tracker):
@@ -88,6 +93,51 @@ class TestActivityScoping:
         fresh_tracker.touch(1)
         fresh_tracker.touch(2)
         assert PriceService.tickers_to_refresh(db) == ["AAA"]
+
+
+class TestIndexScoping:
+    def test_indexes_are_not_priced_for_ordinary_activity(self, db, fresh_tracker):
+        # Index funds are excluded from the dashboard, so browsing the rest of
+        # the app is no reason to spend quota on them.
+        _index_trade(db, 1, "VOO", 3)
+        fresh_tracker.touch(1)
+        assert PriceService.tickers_to_refresh(db) == []
+
+    def test_viewing_the_indexes_page_brings_them_in(self, db, fresh_tracker):
+        _index_trade(db, 1, "VOO", 3)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        assert PriceService.tickers_to_refresh(db) == ["VOO"]
+
+    def test_index_interest_expires(self, db, fresh_tracker):
+        _index_trade(db, 1, "VOO", 3)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        fresh_tracker._last_seen[(SCOPE_INDEXES, 1)] -= ACTIVITY_WINDOW + 1
+        assert PriceService.tickers_to_refresh(db) == []
+
+    def test_closed_index_position_is_not_priced(self, db, fresh_tracker):
+        _index_trade(db, 1, "VOO", 3)
+        _index_trade(db, 1, "VOO", 3, action=TradeAction.SELL)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        assert PriceService.tickers_to_refresh(db) == []
+
+    def test_another_users_indexes_are_excluded(self, db, fresh_tracker):
+        _index_trade(db, 1, "VOO", 3)
+        _index_trade(db, 2, "QQQ", 2)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        assert PriceService.tickers_to_refresh(db) == ["VOO"]
+
+    def test_holdings_and_indexes_combine(self, db, fresh_tracker):
+        _trade(db, 1, "AAA", 10)
+        _index_trade(db, 1, "VOO", 3)
+        fresh_tracker.touch(1)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        assert PriceService.tickers_to_refresh(db) == ["AAA", "VOO"]
+
+    def test_index_scope_alone_does_not_pull_in_ordinary_holdings(self, db, fresh_tracker):
+        _trade(db, 1, "AAA", 10)
+        _index_trade(db, 1, "VOO", 3)
+        fresh_tracker.touch(1, SCOPE_INDEXES)
+        assert PriceService.tickers_to_refresh(db) == ["VOO"]
 
 
 class TestAlertScoping:
