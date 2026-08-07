@@ -98,7 +98,9 @@ actual use. The rules:
   otherwise N open browser tabs become N concurrent fetch storms.
 - **`CACHE_TTL` is the request rate; `PRICE_LOOP_TICK` is the responsiveness.**
   The thread wakes every 15s but only fetches tickers whose price has aged past
-  180s. A newly-online user's holdings get priced within a tick.
+  90s. A newly-online user's holdings get priced within a tick. Tune `CACHE_TTL`
+  to trade freshness against upstream volume — it scales the request count
+  linearly, and market-hours gating already removes ~80% of the old traffic.
 - **What gets fetched** (`PriceService.tickers_to_refresh`): active alert
   tickers always, plus open positions of users seen in the last `ACTIVITY_WINDOW`.
   An idle deployment makes zero upstream calls.
