@@ -33,8 +33,6 @@ The app runs on Railway with three services: **backend**, **frontend**, and **Po
 | Service  | Variable | Value |
 |----------|----------|-------|
 | backend  | `DATABASE_URL` | injected automatically by Railway PostgreSQL add-on |
-| backend  | `ANTHROPIC_API_KEY` | from `.env` |
-| backend  | `GOOGLE_API_KEY` | from `.env` |
 | backend  | `PORT` | set to `8000` to pin it |
 | backend  | `ADMIN_EMAIL` | your email — creates the first admin user on startup |
 | backend  | `ADMIN_PASSWORD` | your password for the admin account |
@@ -66,8 +64,8 @@ Full-stack trading portfolio tracker with separate backend and frontend servers.
 
 **Frontend** (`frontend/`): Next.js (App Router) + TypeScript
 - `app/page.tsx` — Entry point; renders the Dashboard
-- `app/components/` — Dashboard, TradeForm, History, Statistics, Chat, QuickTradeModal, NavBar, IndexDashboard
-- `app/api.ts` — Typed API client (fetchPortfolio, fetchTrades, fetchStatistics, createTrade, sendChatMessage)
+- `app/components/` — Dashboard, TradeForm, History, Statistics, QuickTradeModal, NavBar, IndexDashboard
+- `app/api.ts` — Typed API client (fetchPortfolio, fetchTrades, fetchStatistics, createTrade)
 - `app/globals.css` — Dark theme using CSS custom properties
 - `next.config.ts` — Proxies `/api` requests to `BACKEND_URL` env var (default: `http://localhost:8000`); baked in at build time so Docker passes it as a build arg
 
@@ -77,7 +75,6 @@ Full-stack trading portfolio tracker with separate backend and frontend servers.
 - `GET /api/trades` — All trades, newest first
 - `GET /api/portfolio` — Market value, unrealized P&L, realized P&L, and per-ticker positions
 - `GET /api/statistics` — Win rate, profit factor, drawdown, monthly P&L timeseries, cumulative P&L, per-ticker stats
-- `POST /api/chat` — Multi-LLM chat; accepts `messages` array and `provider` (`claude`/`openai`/`gemini`/`gemini25`)
 
 ## Key Design Decisions
 
@@ -85,7 +82,7 @@ Full-stack trading portfolio tracker with separate backend and frontend servers.
 - Live prices fetched via yfinance by a single background thread — see **Price fetching** below
 - Positions are computed dynamically from the trades table (no separate positions table)
 - Database is SQLite locally / PostgreSQL in Docker; schema managed by **Alembic** — migrations run automatically on startup via `alembic upgrade head`
-- **Index funds** (`VOO`, `SPY`, `QQQ`, `IBIT`, `ETHA`) are tracked but excluded from all statistics, dashboard totals, and chat context — see `INDEX_TICKERS_SET` in `main.py`
+- **Index funds** (`VOO`, `SPY`, `QQQ`, `IBIT`, `ETHA`) are tracked but excluded from all statistics and dashboard totals — see `INDEX_TICKERS_SET` in `core/config.py`
 
 ### Price fetching
 
@@ -130,15 +127,9 @@ per ticker. Don't assume adding tickers to a "batch" is free.
 
 All cost basis and P&L calculations use FIFO via two functions in `main.py`:
 - `_fifo_from_trades(trades, ticker)` → `(avg_cost, realized_pnl)`: used for live position cost basis
-- `_fifo_closed_lots(trades, ticker)` → `list[ClosedLot]`: returns each individual lot closure with `ticker`, `pnl`, `cost_basis`, `open_date`, `close_date`, `quantity` — used for statistics and chat context
+- `_fifo_closed_lots(trades, ticker)` → `list[ClosedLot]`: returns each individual lot closure with `ticker`, `pnl`, `cost_basis`, `open_date`, `close_date`, `quantity` — used for statistics
 
 Both functions maintain separate long/short lot queues. Fees are deducted proportionally per share when lots are consumed (open leg carries fee-per-share; close leg deducts at consumption).
-
-### Chat / LLM Context
-
-`_build_chat_context(db)` in `main.py` builds the system prompt per request. It includes: portfolio summary (market value, unrealized/realized P&L, total fees), open positions, last 20 trades, and all closed lots sorted by P&L descending with percentage return. This is regenerated on every chat request — no caching.
-
-Supported providers and models: Claude (`claude-haiku-4-5-20251001`), OpenAI (`gpt-4o-mini`), Gemini (`gemini-3-flash-preview`, `gemini-2.5-flash`). API keys are read from environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
 ### Schema Changes (Alembic)
 

@@ -160,25 +160,6 @@ export interface PortfolioStatistics {
   closed_lots: ClosedLot[];
 }
 
-export interface DispositionSummary {
-  hold_ratio: number;
-  avg_winner_hold_days: number;
-  avg_loser_hold_days: number;
-  interpretation: string;
-}
-
-export interface ChatInsights {
-  flags: string[];
-  has_insights: boolean;
-  disposition_summary: DispositionSummary | null;
-}
-
-export async function fetchInsights(): Promise<ChatInsights> {
-  const res = await fetch(`${API}/chat/insights`, OPTS);
-  if (!res.ok) throw new Error("Failed to fetch insights");
-  return res.json();
-}
-
 export async function fetchPortfolio(): Promise<PortfolioSummary> {
   const res = await fetch(`${API}/portfolio`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch portfolio");
@@ -219,96 +200,6 @@ export async function fetchBenchmark(ticker: string): Promise<BenchmarkCompariso
   const res = await fetch(`${API}/benchmark?ticker=${encodeURIComponent(ticker)}`, OPTS);
   if (!res.ok) throw new Error("Failed to fetch benchmark");
   return res.json();
-}
-
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface Conversation {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  provider: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export async function fetchConversations(): Promise<Conversation[]> {
-  const res = await fetch(`${API}/chat/conversations`, OPTS);
-  if (!res.ok) throw new Error("Failed to fetch conversations");
-  return res.json();
-}
-
-export async function upsertConversation(id: string, title: string, messages: ChatMessage[], provider: string): Promise<void> {
-  await fetch(`${API}/chat/conversations/${id}`, {
-    ...OPTS, method: "PUT", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, messages, provider }),
-  });
-}
-
-export async function deleteConversationApi(id: string): Promise<void> {
-  await fetch(`${API}/chat/conversations/${id}`, { ...OPTS, method: "DELETE" });
-}
-
-async function _readNdjsonStream(res: Response, onChunk: (text: string) => void): Promise<void> {
-  if (!res.ok) {
-    let detail = `Request failed (${res.status})`;
-    try { const e = await res.json(); if (e.detail) detail = e.detail; } catch { /* non-JSON */ }
-    throw new Error(detail);
-  }
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const msg = JSON.parse(line);
-      if (msg.error) throw new Error(msg.error);
-      if (msg.done) return;
-      if (msg.t) onChunk(msg.t);
-    }
-  }
-}
-
-export async function sendChatMessage(
-  messages: ChatMessage[],
-  provider: string,
-  onChunk: (text: string) => void,
-  onToolCall?: (toolName: string) => void,
-): Promise<void> {
-  const res = await fetch(`${API}/chat`, {
-    ...json({ messages, provider }),
-  });
-  if (!res.ok) {
-    let detail = `Request failed (${res.status})`;
-    try { const e = await res.json(); if (e.detail) detail = e.detail; } catch { /* non-JSON */ }
-    throw new Error(detail);
-  }
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const msg = JSON.parse(line);
-      if (msg.error) throw new Error(msg.error);
-      if (msg.done) return;
-      if (msg.tool_call) { onToolCall?.(msg.tool_call); continue; }
-      if (msg.t) onChunk(msg.t);
-    }
-  }
 }
 
 // ---- Price alerts & push notifications -------------------------------------

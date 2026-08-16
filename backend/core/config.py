@@ -20,7 +20,6 @@ NEGATIVE_CACHE_TTL: int = 180
 # throughout, so the dashboard degrades to "slightly stale" rather than "empty".
 BREAKER_BASE_COOLDOWN: int = 300
 BREAKER_MAX_COOLDOWN: int = 1800
-MAX_TOOL_ROUNDS: int = 5          # max LLM ↔ tool iterations per chat request
 HIST_CACHE_TTL: int = 6 * 3600    # seconds before a cached historical price series is stale
 # Indexes a user can benchmark their trading against on the Performance tab.
 BENCHMARK_TICKERS: frozenset[str] = frozenset({"SPY", "QQQ"})

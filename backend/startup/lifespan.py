@@ -92,21 +92,25 @@ def _ensure_auth_schema() -> None:
             logger.info("Added user_id column to index_trades")
 
 
-def _ensure_chat_schema() -> None:
-    """Create chat_conversations table if missing (idempotent)."""
+def _drop_chat_schema() -> None:
+    """Drop the chat_conversations table left over from the removed AI chat feature (idempotent).
+
+    The table was only ever created defensively at startup (never via Alembic),
+    so it is dropped the same way. Remove this once it has run in production.
+    """
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(engine)
-    if "chat_conversations" not in inspector.get_table_names():
-        from models import ChatConversation
-        ChatConversation.__table__.create(bind=engine, checkfirst=True)
-        logger.info("Created chat_conversations table")
+    if "chat_conversations" in inspector.get_table_names():
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE chat_conversations"))
+        logger.info("Dropped chat_conversations table (AI chat feature removed)")
 
 
 def _ensure_alerts_schema() -> None:
     """Create price_alerts / push_subscriptions tables if missing (idempotent).
 
     Production pins a logical Alembic head and skips migrations, so — like the
-    auth and chat tables — the alert tables are also created defensively here.
+    auth tables — the alert tables are also created defensively here.
     """
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(engine)
@@ -222,7 +226,7 @@ async def lifespan(app: FastAPI):
 
     elif _current_version in ("e920117ef5cf", "a1b2c3d4e5f6"):
         # Known older versions — bypass hanging Alembic migrations, stamp to head directly.
-        # _ensure_auth_schema() and _ensure_chat_schema() apply the actual DDL.
+        # _ensure_auth_schema() applies the actual DDL.
         logger.info("Bypassing Alembic migration from %s — updating version directly", _current_version)
         with engine.begin() as _conn:
             _conn.execute(text(
@@ -246,9 +250,9 @@ async def lifespan(app: FastAPI):
         raise
 
     try:
-        _ensure_chat_schema()
+        _drop_chat_schema()
     except Exception:
-        logger.error("Chat schema setup failed:\n%s", traceback.format_exc())
+        logger.error("Chat schema teardown failed:\n%s", traceback.format_exc())
         raise
 
     try:
