@@ -166,20 +166,36 @@ class TestCircuitBreaker:
 class TestTickHandling:
     """What the refresh thread decides to fetch on a given tick."""
 
+    _CLOSE_TS = 1_700_000_000.0
+
     def _open(self, flag: bool):
         return patch("services.price_service.is_market_open", return_value=flag)
+
+    def _close_at(self):
+        close = MagicMock()
+        close.timestamp.return_value = self._CLOSE_TS
+        return patch("services.price_service.last_session_close", return_value=close)
 
     def test_during_the_session_everything_is_due(self, svc):
         with self._open(True):
             assert svc._due_this_tick(["AAA", "BBB"]) == ["AAA", "BBB"]
 
-    def test_outside_the_session_priced_tickers_are_left_alone(self, svc):
-        svc._price_cache["AAA"] = (10.0, time.time() - 10_000)
-        with self._open(False):
+    def test_ticker_priced_after_the_close_is_left_alone(self, svc):
+        svc._price_cache["AAA"] = (10.0, self._CLOSE_TS + 60)
+        with self._open(False), self._close_at():
+            assert svc._due_this_tick(["AAA"]) == []
+
+    def test_ticker_priced_before_the_close_is_warmed_once(self, svc):
+        # A user opening the site in the evening should see today's close,
+        # not the price from whenever they were last active.
+        svc._price_cache["AAA"] = (10.0, self._CLOSE_TS - 10_000)
+        with self._open(False), self._close_at():
+            assert svc._due_this_tick(["AAA"]) == ["AAA"]
+            # ...once per closed period, even if the fetch failed.
             assert svc._due_this_tick(["AAA"]) == []
 
     def test_never_priced_ticker_is_warmed_once_while_closed(self, svc):
-        with self._open(False):
+        with self._open(False), self._close_at():
             # A cold cache (out-of-hours deploy) still gets one pass, so the
             # dashboard shows the last close rather than avg cost.
             assert svc._due_this_tick(["AAA"]) == ["AAA"]

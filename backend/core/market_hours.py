@@ -16,7 +16,7 @@ leave the dashboard stale for a whole session.
 Early closes (1pm ET the day after Thanksgiving, Christmas Eve) are ignored:
 trading past them costs one extra fetch that returns the same closing price.
 """
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
@@ -74,6 +74,25 @@ def is_trading_day(day: date) -> bool:
     if day.weekday() >= 5:  # Saturday / Sunday
         return False
     return day not in _HOLIDAYS.get(day.year, frozenset())
+
+
+def last_session_close(now: datetime | None = None) -> datetime:
+    """The 16:00 ET close of the most recent completed session at or before `now`.
+
+    While a session is in progress this is the *previous* day's close — the
+    current session hasn't produced one yet. A naive `now` is read as ET.
+    """
+    if now is None:
+        now = datetime.now(tz=_ET)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=_ET)
+    et = now.astimezone(_ET)
+    day = et.date()
+    if not is_trading_day(day) or et.time() < _SESSION_CLOSE:
+        day -= timedelta(days=1)
+        while not is_trading_day(day):
+            day -= timedelta(days=1)
+    return datetime.combine(day, _SESSION_CLOSE, tzinfo=_ET)
 
 
 def is_market_open(now: datetime | None = None) -> bool:

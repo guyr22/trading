@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from core.market_hours import is_market_open, is_trading_day
+from core.market_hours import is_market_open, is_trading_day, last_session_close
 
 ET = ZoneInfo("America/New_York")
 UTC = ZoneInfo("UTC")
@@ -68,6 +68,29 @@ class TestSessionHours:
 
     def test_closed_on_a_holiday_midday(self):
         assert is_market_open(et(2026, 12, 25, 12, 0)) is False
+
+
+class TestLastSessionClose:
+    def test_evening_after_a_trading_day_is_that_days_close(self):
+        assert last_session_close(et(2026, 8, 4, 18, 0)) == et(2026, 8, 4, 16, 0)
+
+    def test_the_closing_minute_itself_counts_as_closed(self):
+        assert last_session_close(et(2026, 8, 4, 16, 0)) == et(2026, 8, 4, 16, 0)
+
+    def test_mid_session_the_previous_days_close_stands(self):
+        # The current session hasn't produced a close yet.
+        assert last_session_close(et(2026, 8, 4, 11, 0)) == et(2026, 8, 3, 16, 0)
+
+    def test_weekend_walks_back_to_friday(self):
+        assert last_session_close(et(2026, 8, 9, 12, 0)) == et(2026, 8, 7, 16, 0)
+
+    def test_holiday_is_skipped(self):
+        # Friday Apr 3 2026 is Good Friday; Saturday's last close is Thursday's.
+        assert last_session_close(et(2026, 4, 4, 12, 0)) == et(2026, 4, 2, 16, 0)
+
+    def test_utc_input_is_converted(self):
+        # 21:00 UTC on Aug 4 is 17:00 ET — after that day's close.
+        assert last_session_close(datetime(2026, 8, 4, 21, 0, tzinfo=UTC)) == et(2026, 8, 4, 16, 0)
 
 
 class TestTimezoneHandling:

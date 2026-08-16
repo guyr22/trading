@@ -15,7 +15,7 @@ from core.config import (
     PRICE_LOOP_TICK,
 )
 from core.logging import get_logger
-from core.market_hours import is_market_open
+from core.market_hours import is_market_open, last_session_close
 
 logger = get_logger(__name__)
 
@@ -300,18 +300,22 @@ class PriceService:
         During the session: all of them — get_live_prices filters by cache age,
         so CACHE_TTL sets the real request rate.
 
-        Outside it: nothing, except tickers that have never been priced at all.
-        The cache is in-memory, so without that exception a deploy outside
-        trading hours — or a user logging in overnight — would show avg cost
-        instead of the last close. One attempt per ticker, tracked so it can't
-        turn into a loop, and reset when the market next opens.
+        Outside it: only tickers not yet priced since the last session close —
+        never-priced ones (out-of-hours deploy, the cache is in-memory) and ones
+        whose cached price predates the close (a user opening the site in the
+        evening should see today's close, not whenever they were last active).
+        One attempt per ticker, tracked so a failure can't turn into a loop,
+        and reset when the market next opens. A success stamps the cache after
+        the close, so it stays undue until the next closed period on its own.
         """
         if is_market_open():
             self._warmed_while_closed.clear()
             return tickers
+        close_ts = last_session_close().timestamp()
         pending = [
             t for t in tickers
-            if t not in self._price_cache and t not in self._warmed_while_closed
+            if t not in self._warmed_while_closed
+            and (t not in self._price_cache or self._price_cache[t][1] < close_ts)
         ]
         self._warmed_while_closed.update(pending)
         return pending

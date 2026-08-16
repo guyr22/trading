@@ -110,8 +110,12 @@ actual use. The rules:
   prices `index_trades` holdings only while that scope is warm. The Indexes page
   must therefore keep polling — a single fetch would only ever render the cold
   response. Same applies to any future page with its own ticker set.
-- **Market hours only** (`core/market_hours.py`), with one unconditional pass on
-  startup so a deploy outside trading hours doesn't leave the cache empty.
+- **Market hours only** (`core/market_hours.py`), with a one-shot warm pass
+  while closed: any refresh-set ticker not priced since the last session close
+  (`last_session_close`) gets a single fetch, so an out-of-hours deploy or a
+  user opening the site in the evening sees the closing price instead of a
+  stale one. One attempt per ticker per closed period, tracked in
+  `_warmed_while_closed` so a failure can't loop.
 - **Rate-limit handling.** A failed ticker is negative-cached for
   `NEGATIVE_CACHE_TTL`; a rate-limit response opens a service-wide cooldown
   (`BREAKER_BASE_COOLDOWN`, doubling to `BREAKER_MAX_COOLDOWN`). Cached prices
