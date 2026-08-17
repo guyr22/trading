@@ -40,6 +40,7 @@ export interface Position {
   quantity: number;
   avg_cost: number;
   current_price: number;
+  price_available: boolean;
   market_value: number;
   unrealized_pnl: number;
   unrealized_pnl_pct: number;

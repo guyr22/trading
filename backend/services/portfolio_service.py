@@ -46,7 +46,8 @@ class PortfolioService:
 
         positions: list[PositionResponse] = []
         for ticker, qty, avg in held:
-            current_price = prices.get(ticker) or avg
+            cached_price = prices.get(ticker)
+            current_price = cached_price or avg
             market_value = qty * current_price
             cost_basis = qty * avg
             unrealized = market_value - cost_basis
@@ -57,6 +58,7 @@ class PortfolioService:
                 quantity=qty,
                 avg_cost=round(avg, 2),
                 current_price=round(current_price, 2),
+                price_available=cached_price is not None,
                 market_value=round(market_value, 2),
                 unrealized_pnl=round(unrealized, 2),
                 unrealized_pnl_pct=round(unrealized_pct, 2),
@@ -126,7 +128,8 @@ class PortfolioService:
         prices = self._price_service.get_cached_prices([t for t, _, _ in held])
         positions: list[PositionResponse] = []
         for ticker, qty, avg in held:
-            current_price = prices.get(ticker) or avg
+            cached_price = prices.get(ticker)
+            current_price = cached_price or avg
             market_value = qty * current_price
             cost_basis = qty * avg
             unrealized = market_value - cost_basis
@@ -136,6 +139,7 @@ class PortfolioService:
                 quantity=qty,
                 avg_cost=round(avg, 2),
                 current_price=round(current_price, 2),
+                price_available=cached_price is not None,
                 market_value=round(market_value, 2),
                 unrealized_pnl=round(unrealized, 2),
                 unrealized_pnl_pct=round(unrealized_pct, 2),

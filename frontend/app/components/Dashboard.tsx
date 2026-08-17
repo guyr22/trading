@@ -31,6 +31,10 @@ export default function Dashboard() {
 
   if (!data) return <p className="empty-msg">Loading...</p>;
 
+  // Totals include a cost-basis fallback for unpriced tickers, so they're
+  // misleading until every position has a live quote.
+  const pricesPending = data.positions.some((p: Position) => !p.price_available);
+
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
@@ -41,11 +45,19 @@ export default function Dashboard() {
       <div className="summary-cards">
         <div className="card">
           <span className="card-label">Market Value</span>
-          <span className="card-value">{fmt(data.total_market_value)}</span>
+          {pricesPending ? (
+            <span className="card-value"><span className="skeleton" style={{ width: "7rem" }} /></span>
+          ) : (
+            <span className="card-value">{fmt(data.total_market_value)}</span>
+          )}
         </div>
         <div className="card">
           <span className="card-label">Unrealized P&L</span>
-          <span className={`card-value ${pnlClass(data.total_unrealized_pnl)}`}>{fmt(data.total_unrealized_pnl)}</span>
+          {pricesPending ? (
+            <span className="card-value"><span className="skeleton" style={{ width: "7rem" }} /></span>
+          ) : (
+            <span className={`card-value ${pnlClass(data.total_unrealized_pnl)}`}>{fmt(data.total_unrealized_pnl)}</span>
+          )}
         </div>
         <div className="card">
           <span className="card-label">Realized P&L</span>
@@ -94,10 +106,21 @@ export default function Dashboard() {
                   </td>
                   <td>{p.quantity % 1 === 0 ? p.quantity : p.quantity.toFixed(2)}</td>
                   <td>{fmt(p.avg_cost)}</td>
-                  <td>{fmtPrice(p.current_price)}</td>
-                  <td>{fmt(p.market_value)}</td>
-                  <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
-                  <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>
+                  {p.price_available ? (
+                    <>
+                      <td>{fmtPrice(p.current_price)}</td>
+                      <td>{fmt(p.market_value)}</td>
+                      <td className={pnlClass(p.unrealized_pnl)}>{fmt(p.unrealized_pnl)}</td>
+                      <td className={pnlClass(p.unrealized_pnl_pct)}>{p.unrealized_pnl_pct.toFixed(2)}%</td>
+                    </>
+                  ) : (
+                    <>
+                      <td><span className="skeleton" /></td>
+                      <td><span className="skeleton" /></td>
+                      <td><span className="skeleton" /></td>
+                      <td><span className="skeleton" style={{ width: "3rem" }} /></td>
+                    </>
+                  )}
                   <td className="quick-actions">
                     <button className="btn-quick btn-quick-buy" onClick={() => setModal({ action: "BUY", ticker: p.ticker, price: p.current_price, quantity: p.quantity })}>Buy</button>
                     <button className="btn-quick btn-quick-sell" onClick={() => setModal({ action: "SELL", ticker: p.ticker, price: p.current_price, quantity: p.quantity })}>Sell</button>

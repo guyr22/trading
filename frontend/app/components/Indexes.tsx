@@ -56,13 +56,21 @@ export default function Indexes() {
               <span className="card-label">{ticker}</span>
               {pos ? (
                 <>
-                  <span className="card-value">{fmt(pos.market_value)}</span>
+                  {pos.price_available ? (
+                    <span className="card-value">{fmt(pos.market_value)}</span>
+                  ) : (
+                    <span className="card-value"><span className="skeleton" style={{ width: "6rem" }} /></span>
+                  )}
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
                     {pos.quantity % 1 === 0 ? pos.quantity : pos.quantity.toFixed(2)} shares @ {fmtPrice(pos.avg_cost)}
                   </span>
-                  <span style={{ fontSize: "0.85rem", marginTop: "0.1rem" }} className={pnlClass(pos.unrealized_pnl)}>
-                    {fmt(pos.unrealized_pnl)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
-                  </span>
+                  {pos.price_available ? (
+                    <span style={{ fontSize: "0.85rem", marginTop: "0.1rem" }} className={pnlClass(pos.unrealized_pnl)}>
+                      {fmt(pos.unrealized_pnl)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
+                    </span>
+                  ) : (
+                    <span style={{ marginTop: "0.1rem" }}><span className="skeleton" /></span>
+                  )}
                   <button
                     className="btn-quick btn-quick-buy"
                     style={{ marginTop: "0.75rem", alignSelf: "flex-start" }}

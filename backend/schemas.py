@@ -62,6 +62,9 @@ class PositionResponse(BaseModel):
     quantity: float
     avg_cost: float
     current_price: float
+    # False until the refresh thread has cached a live quote; price/market_value
+    # then fall back to avg_cost so totals stay finite, and the UI shows a skeleton.
+    price_available: bool = True
     market_value: float
     unrealized_pnl: float
     unrealized_pnl_pct: float
