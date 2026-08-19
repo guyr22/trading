@@ -64,6 +64,14 @@ export default function Indexes() {
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
                     {pos.quantity % 1 === 0 ? pos.quantity : pos.quantity.toFixed(2)} shares @ {fmtPrice(pos.avg_cost)}
                   </span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+                    Market price:{" "}
+                    {pos.price_available ? (
+                      fmtPrice(pos.current_price)
+                    ) : (
+                      <span className="skeleton" style={{ width: "3.5rem" }} />
+                    )}
+                  </span>
                   {pos.price_available ? (
                     <span style={{ fontSize: "0.85rem", marginTop: "0.1rem" }} className={pnlClass(pos.unrealized_pnl)}>
                       {fmt(pos.unrealized_pnl)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
