@@ -1,12 +1,10 @@
 import os
-from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from jose import JWTError, jwt
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-me-in-production-please-set-JWT_SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7
 
 
 def hash_password(password: str) -> str:
@@ -18,9 +16,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: int, email: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    """Mint a session token. Deliberately carries no `exp` claim: sessions
+    never expire on their own, they end when the user logs out."""
     return jwt.encode(
-        {"sub": str(user_id), "email": email, "exp": expire},
+        {"sub": str(user_id), "email": email},
         SECRET_KEY,
         algorithm=ALGORITHM,
     )

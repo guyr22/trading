@@ -17,13 +17,16 @@ logger = get_logger(__name__)
 
 SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "false").lower() == "true"
 INVITE_EXPIRE_HOURS = 72
+# Session cookies never expire on their own. Browsers cap cookie lifetime
+# (Chrome at 400 days), so this is "as long as the browser allows".
+COOKIE_MAX_AGE = 86400 * 365 * 10
 
 _COOKIE_KWARGS = dict(
     key="access_token",
     httponly=True,
     secure=SECURE_COOKIES,
     samesite="lax",
-    max_age=86400 * 7,
+    max_age=COOKIE_MAX_AGE,
     path="/",
 )
 
