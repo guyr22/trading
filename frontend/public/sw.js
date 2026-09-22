@@ -1,29 +1,21 @@
-const CACHE = "portfolio-v1";
-const OFFLINE_URLS = ["/", "/manifest.json", "/icon.svg"];
-
-self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(OFFLINE_URLS))
-  );
+// Push-only worker. A cache-first fetch handler served a stale HTML
+// shell after deploys; this app needs the network for live prices anyway.
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
-  const url = new URL(e.request.url);
-  // Don't cache API calls
-  if (url.pathname.startsWith("/api/")) return;
-  e.respondWith(
-    caches.match(e.request).then((cached) => cached ?? fetch(e.request))
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      await self.clients.claim();
+      // Cached HTML can outlive its hashed JS chunks, so page JS may be
+      // dead. Reload open tabs ourselves when we actually evicted a shell.
+      if (keys.length === 0) return;
+      const windows = await self.clients.matchAll({ type: "window" });
+      await Promise.all(windows.map((client) => client.navigate(client.url)));
+    })()
   );
 });
 
