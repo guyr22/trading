@@ -260,24 +260,22 @@ class PriceService:
         while someone has the Indexes page open.
         """
         from core.activity import SCOPE_INDEXES, activity_tracker
-        from models import IndexTrade, PriceAlert, Trade, TradeAction
-        from sqlalchemy import case, func
+        from models import IndexTrade, PriceAlert, StockSplit, Trade
+        from domain.finance import fifo_full
 
         def _net_held(model, user_ids: set[int]) -> set[str]:
-            # Grouped per user as well as per ticker: aggregating across users
-            # would let one account's short position cancel out another's long
-            # and drop a genuinely held ticker from the refresh set.
-            rows = db.query(
-                model.user_id,
-                model.ticker,
-                func.sum(
-                    case(
-                        (model.action == TradeAction.BUY, model.quantity),
-                        else_=-model.quantity,
-                    )
-                ).label("net_qty"),
-            ).filter(model.user_id.in_(user_ids)).group_by(model.user_id, model.ticker).all()
-            return {row.ticker for row in rows if (row.net_qty or 0) > 0}
+            # Keep users separate and replay split-adjusted holdings. Raw buy/sell
+            # sums can look closed (or short) after a perfectly valid split sale.
+            trades = db.query(model).filter(model.user_id.in_(user_ids)).order_by(model.executed_at, model.id).all()
+            splits = db.query(StockSplit).filter(StockSplit.user_id.in_(user_ids)).order_by(StockSplit.executed_at, StockSplit.id).all()
+            grouped = {}
+            user_splits = {}
+            for split in splits:
+                user_splits.setdefault(split.user_id, []).append(split)
+            for trade in trades:
+                grouped.setdefault((trade.user_id, trade.ticker), []).append(trade)
+            return {ticker for (user_id, ticker), history in grouped.items()
+                    if fifo_full(history, ticker, user_splits.get(user_id, [])).quantity > 1e-9}
 
         tickers = {
             row[0] for row in

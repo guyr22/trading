@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 
 from domain.finance import FifoResult, fifo_full
-from models import TradeAction
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
 from schemas import PortfolioSummary, PositionResponse
@@ -16,6 +15,7 @@ class PortfolioService:
 
     def _compute_positions_and_realized(self) -> tuple[list[PositionResponse], float]:
         all_trades = self._trade_repo.get_all_ordered()
+        splits = self._trade_repo.get_splits()
         if not all_trades:
             return [], 0.0
 
@@ -27,12 +27,10 @@ class PortfolioService:
         total_realized = 0.0
 
         for ticker, trades in by_ticker.items():
-            buys = sum(t.quantity for t in trades if t.action == TradeAction.BUY)
-            sells = sum(t.quantity for t in trades if t.action == TradeAction.SELL)
-            qty = buys - sells
-            result: FifoResult = fifo_full(trades, ticker)
+            result: FifoResult = fifo_full(trades, ticker, splits)
+            qty = result.quantity
             total_realized += result.realized_pnl
-            if qty == 0:
+            if abs(qty) < 1e-9:
                 continue
             held.append((ticker, qty, result.avg_cost))
 
@@ -78,7 +76,8 @@ class PortfolioService:
         by_ticker: dict = {}
         for t in all_trades:
             by_ticker.setdefault(t.ticker, []).append(t)
-        return sum(fifo_full(trades, ticker).realized_pnl for ticker, trades in by_ticker.items())
+        splits = self._trade_repo.get_splits()
+        return sum(fifo_full(trades, ticker, splits).realized_pnl for ticker, trades in by_ticker.items())
 
     def build_summary(self) -> PortfolioSummary:
         positions, total_realized = self._compute_positions_and_realized()
@@ -105,13 +104,12 @@ class PortfolioService:
         held: list[tuple[str, float, float]] = []
         total_realized = 0.0
 
+        splits = self._trade_repo.get_splits()
         for ticker, trades in by_ticker.items():
-            buys = sum(t.quantity for t in trades if t.action == TradeAction.BUY)
-            sells = sum(t.quantity for t in trades if t.action == TradeAction.SELL)
-            qty = buys - sells
-            result: FifoResult = fifo_full(trades, ticker)
+            result: FifoResult = fifo_full(trades, ticker, splits)
+            qty = result.quantity
             total_realized += result.realized_pnl
-            if qty == 0:
+            if abs(qty) < 1e-9:
                 continue
             held.append((ticker, qty, result.avg_cost))
 

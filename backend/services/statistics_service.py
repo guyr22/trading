@@ -34,6 +34,7 @@ class StatisticsService:
 
     def compute(self) -> PortfolioStatistics:
         all_trades = self._trade_repo.get_all_ordered()
+        splits = self._trade_repo.get_splits()
         etf_map = self._etf_repo.get_map()  # ticker -> LeveragedEtf
 
         def effective_ticker(t: str) -> str:
@@ -44,7 +45,7 @@ class StatisticsService:
         raw: dict[str, dict] = {}
         for ticker in actual_tickers:
             t_trades = [t for t in all_trades if t.ticker == ticker]
-            closed = fifo_closed_lots(t_trades, ticker)
+            closed = fifo_closed_lots(t_trades, ticker, splits)
             raw[ticker] = {
                 "closed": closed,
                 "realized": sum(l.pnl for l in closed),
@@ -201,11 +202,12 @@ class StatisticsService:
             )
 
         all_trades = self._trade_repo.get_all_ordered()
+        splits = self._trade_repo.get_splits()
         actual_tickers = list(dict.fromkeys(t.ticker for t in all_trades))
         all_closed: list[ClosedLot] = []
         for ticker in actual_tickers:
             t_trades = [t for t in all_trades if t.ticker == ticker]
-            all_closed.extend(fifo_closed_lots(t_trades, ticker))
+            all_closed.extend(fifo_closed_lots(t_trades, ticker, splits))
 
         if not all_closed:
             return empty(available=False)

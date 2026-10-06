@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from auth.router import router as auth_router
 from core.logging import configure_logging, get_logger
-from routers import alerts, index_trades, leveraged_etfs, portfolio, trades
+from routers import alerts, index_trades, leveraged_etfs, portfolio, splits, trades
 from startup.lifespan import lifespan
 
 configure_logging()
@@ -42,6 +42,7 @@ async def unhandled_exception_handler(request, exc):
 app.include_router(auth_router)
 app.include_router(trades.router)
 app.include_router(index_trades.router)
+app.include_router(splits.router)
 app.include_router(leveraged_etfs.router)
 app.include_router(portfolio.router)
 app.include_router(alerts.router)

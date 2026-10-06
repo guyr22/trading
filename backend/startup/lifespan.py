@@ -17,6 +17,7 @@ from startup.seed_data import SEED_LEVERAGED_ETFS
 logger = get_logger(__name__)
 
 _ALEMBIC_INI = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+_LEGACY_HEAD = "b2c3d4e5f6a7"
 _INDEX_TICKERS_SQL = ", ".join(f"'{t}'" for t in INDEX_TICKERS_SET)
 
 
@@ -125,6 +126,27 @@ def _ensure_alerts_schema() -> None:
         logger.info("Created push_subscriptions table")
 
 
+def _upgrade_legacy_schema(alembic_cfg: Config) -> None:
+    """Bridge the old logical stamp to real migrations after legacy setup.
+
+    b2c3d4e5f6a7 has no migration file: its schema was provisioned by the
+    compatibility helpers above. Start real migrations at that schema's
+    baseline, then let Alembic create stock_splits and all future additions.
+    """
+    with engine.begin() as connection:
+        current = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+        if current != _LEGACY_HEAD:
+            return
+        alembic_cfg.attributes["connection"] = connection
+        try:
+            # purge avoids trying to resolve the nonexistent legacy revision.
+            command.stamp(alembic_cfg, "e4f5a6b7c8d9", purge=True)
+            command.upgrade(alembic_cfg, "head")
+        finally:
+            alembic_cfg.attributes.pop("connection", None)
+    logger.info("Legacy database now uses recorded Alembic migrations")
+
+
 def _ensure_admin_user() -> None:
     """Create the admin user from env vars on first startup and assign orphaned trades to them."""
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
@@ -192,7 +214,7 @@ async def lifespan(app: FastAPI):
         logger.info("Auth tables pre-created before migration paths")
 
     # Read the current Alembic version (if any) to decide the migration path.
-    _HEAD = "b2c3d4e5f6a7"
+    _HEAD = _LEGACY_HEAD
     _current_version: str | None = None
     if "alembic_version" in existing_tables:
         with engine.connect() as _conn:
@@ -260,6 +282,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.error("Alerts schema setup failed:\n%s", traceback.format_exc())
         raise
+
+    _upgrade_legacy_schema(alembic_cfg)
 
     try:
         _migrate_index_trades_if_needed()

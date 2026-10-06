@@ -9,6 +9,7 @@ import { createInvite } from "../api";
 const NAV_ALL = [
   { href: "/", label: "Dashboard" },
   { href: "/history", label: "History" },
+  { href: "/splits", label: "Splits" },
   { href: "/indexes", label: "Indexes" },
   { href: "/statistics", label: "Statistics" },
   { href: "/alerts", label: "Alerts" },

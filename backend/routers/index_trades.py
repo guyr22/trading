@@ -6,6 +6,7 @@ from auth.dependencies import get_current_user
 from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from dependencies import get_index_trade_repo
+from domain.validation import introduces_oversell
 from models import IndexTrade, TradeAction, User
 from repositories.index_trade_repository import IndexTradeRepository
 from schemas import TradeCreate, TradeResponse
@@ -29,7 +30,8 @@ def create_index_trade(
         )
 
     if trade_in.action == TradeAction.SELL:
-        held = repo.shares_held(ticker)
+        held = repo.shares_held_on_platform(ticker, trade_in.platform,
+                                          through_date=trade_in.executed_at or date.today())
         if held < trade_in.quantity:
             raise HTTPException(
                 status_code=400,
@@ -46,6 +48,11 @@ def create_index_trade(
         platform=trade_in.platform,
         executed_at=trade_in.executed_at or date.today(),
     )
+    if trade.action == TradeAction.SELL:
+        history = repo.get_all_ordered()
+        splits = repo.get_splits()
+        if introduces_oversell(history, splits, history + [trade], splits, ticker):
+            raise HTTPException(status_code=409, detail="This sale would leave a later recorded sale with insufficient shares")
     trade = repo.add(trade)
     logger.info(
         "Index trade recorded  %s %s %s @ $%.2f",

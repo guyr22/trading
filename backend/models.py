@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Date, DateTime, Enum as SAEnum, func
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, String, Date, DateTime, Enum as SAEnum, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -89,6 +89,23 @@ class IndexTrade(Base):
     platform: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     executed_at: Mapped[date] = mapped_column(Date, default=date.today)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), default=lambda: datetime.now())
+
+
+class StockSplit(Base):
+    __tablename__ = "stock_splits"
+    __table_args__ = (
+        UniqueConstraint("user_id", "ticker", "executed_at", name="uq_stock_splits_user_ticker_date"),
+        CheckConstraint("new_shares > 0 AND old_shares > 0 AND new_shares != old_shares", name="ck_stock_splits_ratio"),
+        Index("ix_stock_splits_user_ticker_date", "user_id", "ticker", "executed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(10), nullable=False)
+    new_shares: Mapped[float] = mapped_column(Float, nullable=False)
+    old_shares: Mapped[float] = mapped_column(Float, nullable=False)
+    executed_at: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class AlertCondition(str, enum.Enum):

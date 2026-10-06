@@ -6,6 +6,7 @@ from auth.dependencies import get_current_user
 from core.config import INDEX_TICKERS_SET
 from core.logging import get_logger
 from dependencies import get_etf_repo, get_trade_repo
+from domain.validation import introduces_oversell
 from models import Trade, TradeAction, User
 from repositories.etf_repository import EtfRepository
 from repositories.trade_repository import TradeRepository
@@ -30,7 +31,8 @@ def create_trade(
         )
 
     if trade_in.action == TradeAction.SELL:
-        held = trade_repo.shares_held_on_platform(ticker, trade_in.platform)
+        held = trade_repo.shares_held_on_platform(ticker, trade_in.platform,
+                                                 through_date=trade_in.executed_at or date.today())
         if held < trade_in.quantity:
             platform_label = trade_in.platform or "unspecified platform"
             logger.warning(
@@ -55,6 +57,11 @@ def create_trade(
         platform=trade_in.platform,
         executed_at=trade_in.executed_at or date.today(),
     )
+    if trade.action == TradeAction.SELL:
+        history = trade_repo.get_by_ticker(ticker)
+        splits = trade_repo.get_splits()
+        if introduces_oversell(history, splits, history + [trade], splits, ticker):
+            raise HTTPException(status_code=409, detail="This sale would leave a later recorded sale with insufficient shares")
     trade = trade_repo.add(trade)
     logger.info(
         "Trade recorded  %s %s %s @ $%.2f (fees=$%.2f)",
@@ -121,7 +128,7 @@ def update_trade(
 
     if effective_action == TradeAction.SELL:
         held = trade_repo.shares_held_on_platform_excluding(
-            effective_ticker, effective_platform, trade_id
+            effective_ticker, effective_platform, trade_id, through_date=effective_executed_at
         )
         if held < effective_quantity:
             platform_label = effective_platform or "unspecified platform"

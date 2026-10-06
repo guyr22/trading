@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { createIndexTrade, fetchIndexPortfolio, fetchIndexTrades, type PortfolioSummary, type Trade } from "../api";
 import QuickTradeModal from "./QuickTradeModal";
 
@@ -48,6 +49,7 @@ export default function Indexes() {
   return (
     <>
       <h2 style={{ marginBottom: "1rem" }}>Index Positions</h2>
+      <p style={{ marginBottom: "1rem" }}><Link href="/splits">Record an index fund split</Link></p>
       <div className="summary-cards" style={{ marginBottom: "2rem" }}>
         {INDEX_TICKERS.map(ticker => {
           const pos = portfolio.positions.find(p => p.ticker === ticker);

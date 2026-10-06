@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createTrade } from "../api";
 
 interface Props {
@@ -55,6 +56,7 @@ export default function TradeForm({ onTradeCreated }: Props) {
   return (
     <>
       <h2>Record a Trade</h2>
+      <p style={{ marginBottom: "1rem" }}><Link href="/splits">Record a stock split</Link></p>
       <form className="trade-form" onSubmit={handleSubmit}>
         <div className="form-row">
           <label>Action</label>

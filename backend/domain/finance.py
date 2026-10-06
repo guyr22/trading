@@ -1,9 +1,9 @@
 """Pure FIFO accounting engine — no framework dependencies."""
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import Optional, Sequence
 
-from models import Trade, TradeAction
+from models import StockSplit, Trade, TradeAction
 
 
 @dataclass
@@ -24,22 +24,46 @@ class FifoResult:
     avg_cost: float
     realized_pnl: float
     closed_lots: list[ClosedLot]
+    quantity: float
+    quantities_by_platform: dict[Optional[str], float]
 
 
-def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
+def accounting_events(trades: list[Trade], splits: Sequence[StockSplit], ticker: str):
+    """Splits take effect before trades on their first post-split trading date.
+
+    Stable sorting preserves the repository's ID order for same-day trades.
+    Original trades and already-closed lots are never rewritten.
+    """
+    events = [(t.executed_at, 1, t) for t in trades if t.ticker == ticker]
+    events.extend((s.executed_at, 0, s) for s in splits if s.ticker == ticker)
+    return [event for _, _, event in sorted(events, key=lambda e: (e[0], e[1]))]
+
+
+def fifo_full(ticker_trades: list[Trade], ticker: str, splits: Sequence[StockSplit] = ()) -> FifoResult:
     """Single FIFO pass — returns avg cost, realized P&L, and all closed lots.
 
     Lots are partitioned by platform: buys and sells on one platform never
     match against lots on another. NULL platform forms its own bucket so
     legacy trades stay internally consistent. Handles long and short
     positions; fees are deducted proportionally per share as lots consume.
+    Splits scale only open lots at the start of their effective date, preserving
+    total cost basis, opening fees, original dates, and already-realized P&L.
     """
     long_by_platform: dict[Optional[str], list[list]] = {}
     short_by_platform: dict[Optional[str], list[list]] = {}
     closed: list[ClosedLot] = []
     realized = 0.0
 
-    for t in ticker_trades:
+    for t in accounting_events(ticker_trades, splits, ticker):
+        if isinstance(t, StockSplit):
+            ratio = t.new_shares / t.old_shares
+            for buckets in (long_by_platform, short_by_platform):
+                for lots in buckets.values():
+                    for lot in lots:
+                        lot[0] *= ratio
+                        lot[1] /= ratio
+                        lot[2] /= ratio  # Preserve the opening fee's total dollars.
+            continue
         qty = float(t.quantity)
         price = float(t.price)
         fps = float(t.fees or 0.0) / qty if qty else 0.0
@@ -91,15 +115,22 @@ def fifo_full(ticker_trades: list[Trade], ticker: str) -> FifoResult:
     else:
         avg_cost = 0.0
 
-    return FifoResult(avg_cost=avg_cost, realized_pnl=realized, closed_lots=closed)
+    platforms = long_by_platform.keys() | short_by_platform.keys()
+    quantities = {
+        p: sum(lot[0] for lot in long_by_platform.get(p, []))
+        - sum(lot[0] for lot in short_by_platform.get(p, []))
+        for p in platforms
+    }
+    return FifoResult(avg_cost=avg_cost, realized_pnl=realized, closed_lots=closed,
+                      quantity=net_qty, quantities_by_platform=quantities)
 
 
-def fifo_avg_cost_and_realized(trades: list[Trade], ticker: str) -> tuple[float, float]:
+def fifo_avg_cost_and_realized(trades: list[Trade], ticker: str, splits: Sequence[StockSplit] = ()) -> tuple[float, float]:
     """Return (avg_cost_of_remaining_shares, total_realized_pnl) via FIFO."""
-    r = fifo_full(trades, ticker)
+    r = fifo_full(trades, ticker, splits)
     return r.avg_cost, r.realized_pnl
 
 
-def fifo_closed_lots(ticker_trades: list[Trade], ticker: str) -> list[ClosedLot]:
+def fifo_closed_lots(ticker_trades: list[Trade], ticker: str, splits: Sequence[StockSplit] = ()) -> list[ClosedLot]:
     """FIFO matching — returns every lot closure as a ClosedLot."""
-    return fifo_full(ticker_trades, ticker).closed_lots
+    return fifo_full(ticker_trades, ticker, splits).closed_lots

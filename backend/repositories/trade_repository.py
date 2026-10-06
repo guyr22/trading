@@ -1,7 +1,9 @@
-from sqlalchemy import case, func, or_, and_
+from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session
 
 from models import Trade, TradeAction
+from domain.finance import fifo_full
+from repositories.split_repository import SplitRepository
 
 
 class TradeRepository:
@@ -51,44 +53,25 @@ class TradeRepository:
             .all()
         )
 
+    def get_splits(self):
+        return SplitRepository(self._db, self._user_id).get_all()
+
     def get_open_tickers(self) -> list[str]:
-        rows = self._db.query(
-            Trade.ticker,
-            func.sum(
-                case(
-                    (Trade.action == TradeAction.BUY, Trade.quantity),
-                    else_=-Trade.quantity,
-                )
-            ).label("net_qty"),
-        ).filter(Trade.user_id == self._user_id).group_by(Trade.ticker).all()
-        return [row.ticker for row in rows if (row.net_qty or 0) > 0]
+        trades = self.get_all_ordered()
+        splits = self.get_splits()
+        return [ticker for ticker in dict.fromkeys(t.ticker for t in trades)
+                if fifo_full(trades, ticker, splits).quantity > 1e-9]
 
     def shares_held(self, ticker: str) -> float:
-        result = self._db.query(
-            func.coalesce(func.sum(
-                case(
-                    (Trade.action == TradeAction.BUY, Trade.quantity),
-                    else_=-Trade.quantity,
-                )
-            ), 0)
-        ).filter(Trade.user_id == self._user_id, Trade.ticker == ticker).scalar()
-        return float(result)
+        return fifo_full(self.get_by_ticker(ticker), ticker, self.get_splits()).quantity
 
-    def shares_held_on_platform(self, ticker: str, platform: str | None) -> float:
-        platform_filter = Trade.platform.is_(None) if platform is None else Trade.platform == platform
-        result = self._db.query(
-            func.coalesce(func.sum(
-                case(
-                    (Trade.action == TradeAction.BUY, Trade.quantity),
-                    else_=-Trade.quantity,
-                )
-            ), 0)
-        ).filter(
-            Trade.user_id == self._user_id,
-            Trade.ticker == ticker,
-            platform_filter,
-        ).scalar()
-        return float(result)
+    def shares_held_on_platform(self, ticker: str, platform: str | None, *,
+                                through_date=None, exclude_id=None) -> float:
+        trades = [t for t in self.get_by_ticker(ticker)
+                  if t.id != exclude_id and (through_date is None or t.executed_at <= through_date)]
+        splits = [s for s in self.get_splits()
+                  if through_date is None or s.executed_at <= through_date]
+        return fifo_full(trades, ticker, splits).quantities_by_platform.get(platform, 0.0)
 
     def get_count_and_max_id(self) -> tuple[int, int]:
         count, max_id = self._db.query(func.count(Trade.id), func.max(Trade.id)).filter(
@@ -120,38 +103,14 @@ class TradeRepository:
         ).first() is not None
 
     def shares_held_excluding(self, ticker: str, exclude_id: int) -> float:
-        result = self._db.query(
-            func.coalesce(func.sum(
-                case(
-                    (Trade.action == TradeAction.BUY, Trade.quantity),
-                    else_=-Trade.quantity,
-                )
-            ), 0)
-        ).filter(
-            Trade.user_id == self._user_id,
-            Trade.ticker == ticker,
-            Trade.id != exclude_id,
-        ).scalar()
-        return max(float(result), 0.0)
+        trades = [t for t in self.get_by_ticker(ticker) if t.id != exclude_id]
+        return max(fifo_full(trades, ticker, self.get_splits()).quantity, 0.0)
 
     def shares_held_on_platform_excluding(
-        self, ticker: str, platform: str | None, exclude_id: int
+        self, ticker: str, platform: str | None, exclude_id: int, *, through_date=None
     ) -> float:
-        platform_filter = Trade.platform.is_(None) if platform is None else Trade.platform == platform
-        result = self._db.query(
-            func.coalesce(func.sum(
-                case(
-                    (Trade.action == TradeAction.BUY, Trade.quantity),
-                    else_=-Trade.quantity,
-                )
-            ), 0)
-        ).filter(
-            Trade.user_id == self._user_id,
-            Trade.ticker == ticker,
-            platform_filter,
-            Trade.id != exclude_id,
-        ).scalar()
-        return max(float(result), 0.0)
+        return max(self.shares_held_on_platform(ticker, platform, through_date=through_date,
+                                              exclude_id=exclude_id), 0.0)
 
     def update(self, trade: Trade, **fields) -> Trade:
         for key, value in fields.items():

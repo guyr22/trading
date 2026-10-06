@@ -1,7 +1,8 @@
-from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from models import IndexTrade, TradeAction
+from models import IndexTrade
+from domain.finance import fifo_full
+from repositories.split_repository import SplitRepository
 
 
 class IndexTradeRepository:
@@ -22,15 +23,17 @@ class IndexTradeRepository:
         return self._q().filter(IndexTrade.id == trade_id).first()
 
     def shares_held(self, ticker: str) -> float:
-        result = self._db.query(
-            func.coalesce(func.sum(
-                case(
-                    (IndexTrade.action == TradeAction.BUY, IndexTrade.quantity),
-                    else_=-IndexTrade.quantity,
-                )
-            ), 0)
-        ).filter(IndexTrade.user_id == self._user_id, IndexTrade.ticker == ticker).scalar()
-        return float(result)
+        return fifo_full(self.get_all_ordered(), ticker,
+                         self.get_splits()).quantity
+
+    def get_splits(self):
+        return SplitRepository(self._db, self._user_id).get_all()
+
+    def shares_held_on_platform(self, ticker: str, platform: str | None, *, through_date=None) -> float:
+        trades = [t for t in self.get_all_ordered() if through_date is None or t.executed_at <= through_date]
+        splits = [s for s in self.get_splits()
+                  if through_date is None or s.executed_at <= through_date]
+        return fifo_full(trades, ticker, splits).quantities_by_platform.get(platform, 0.0)
 
     def add(self, trade: IndexTrade) -> IndexTrade:
         self._db.add(trade)

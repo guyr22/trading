@@ -92,6 +92,41 @@ export interface TradePayload {
   executed_at?: string;
 }
 
+export interface StockSplitPayload {
+  ticker: string;
+  new_shares: number;
+  old_shares: number;
+  executed_at: string;
+}
+
+export interface StockSplit extends StockSplitPayload {
+  id: number;
+  created_at: string;
+}
+
+async function splitError(res: Response): Promise<Error> {
+  const { detail } = await res.json();
+  return new Error(typeof detail === "string" ? detail :
+    Array.isArray(detail) ? detail.map((e: { msg: string }) => e.msg).join("; ") : "Split request failed");
+}
+
+export async function fetchSplits(): Promise<StockSplit[]> {
+  const res = await fetch(`${API}/splits`, OPTS);
+  if (!res.ok) throw await splitError(res);
+  return res.json();
+}
+
+export async function createSplit(payload: StockSplitPayload): Promise<StockSplit> {
+  const res = await fetch(`${API}/splits`, json(payload));
+  if (!res.ok) throw await splitError(res);
+  return res.json();
+}
+
+export async function deleteSplit(id: number): Promise<void> {
+  const res = await fetch(`${API}/splits/${id}`, { ...OPTS, method: "DELETE" });
+  if (!res.ok) throw await splitError(res);
+}
+
 export interface ClosedLot {
   ticker: string;
   open_date: string;

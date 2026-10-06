@@ -1,7 +1,8 @@
 from datetime import date, datetime
+import math
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models import AlertCondition, TradeAction
 
@@ -35,6 +36,37 @@ class TradeResponse(BaseModel):
     fees: float = 0.0
     platform: Optional[str] = None
     executed_at: date
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StockSplitCreate(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=10)
+    new_shares: float = Field(..., gt=0, allow_inf_nan=False)
+    old_shares: float = Field(..., gt=0, allow_inf_nan=False)
+    executed_at: date
+
+    @field_validator("ticker")
+    @classmethod
+    def normalize_ticker(cls, value: str) -> str:
+        value = value.strip().upper()
+        if not value:
+            raise ValueError("Ticker is required")
+        return value
+
+    @model_validator(mode="after")
+    def validate_split(self):
+        ratio = self.new_shares / self.old_shares
+        if ratio == 1 or ratio <= 0 or not math.isfinite(ratio):
+            raise ValueError("Split ratio must be finite, positive, and different from 1:1")
+        if self.executed_at > date.today():
+            raise ValueError("Split date cannot be in the future")
+        return self
+
+
+class StockSplitResponse(StockSplitCreate):
+    id: int
     created_at: datetime
 
     model_config = {"from_attributes": True}

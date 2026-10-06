@@ -172,6 +172,24 @@ tbody tr:hover {
   letter-spacing: 0.04em;
 }
 
+.split-description {
+  color: var(--text-muted);
+  margin: 0.5rem 0 1.5rem;
+  max-width: 650px;
+}
+
+.split-ratio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.split-ratio > span { padding-bottom: 0.5rem; }
+.split-ratio input { width: 100%; }
+.split-hint { color: var(--text-muted); font-size: 0.85rem; }
+.split-history td:first-child { white-space: nowrap; }
+
 .form-row input,
 .form-row select {
   padding: 0.6rem 0.75rem;
