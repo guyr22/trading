@@ -119,12 +119,13 @@ export default function StockSplits() {
         splits.length === 0 ? <p className="empty-msg">No splits recorded yet.</p> : (
           <div className="table-wrap split-history">
             <table>
-              <thead><tr><th>Effective date</th><th>Ticker</th><th>New : Old</th><th>Type</th><th>Actions</th></tr></thead>
+              <thead><tr><th scope="col">Effective date</th><th scope="col">Ticker</th><th scope="col">New shares</th><th scope="col">Old shares</th><th scope="col">Type</th><th scope="col">Actions</th></tr></thead>
               <tbody>{splits.map(split => (
                 <tr key={split.id}>
                   <td>{split.executed_at.split("-").reverse().join("-")}</td>
                   <td><strong>{split.ticker}</strong></td>
-                  <td>{number(split.new_shares)} : {number(split.old_shares)}</td>
+                  <td>{number(split.new_shares)}</td>
+                  <td>{number(split.old_shares)}</td>
                   <td>{split.new_shares > split.old_shares ? "Forward split" : "Reverse split"}</td>
                   <td><button className="nav-btn" disabled={busy} aria-label={`Remove ${split.ticker} split on ${split.executed_at}`}
                     onClick={() => remove(split)}>Remove</button></td>
