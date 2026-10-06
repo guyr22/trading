@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createTrade } from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Props {
   onTradeCreated: () => void;
 }
 
 export default function TradeForm({ onTradeCreated }: Props) {
+  const { user } = useAuth();
   const [action, setAction] = useState<"BUY" | "SELL">("BUY");
   const [ticker, setTicker] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -56,7 +58,7 @@ export default function TradeForm({ onTradeCreated }: Props) {
   return (
     <>
       <h2>Record a Trade</h2>
-      <p style={{ marginBottom: "1rem" }}><Link href="/splits">Record a stock split</Link></p>
+      <p style={{ marginBottom: "1rem" }}><Link href={user?.is_admin ? "/admin?tab=splits" : "/splits"}>Record a stock split</Link></p>
       <form className="trade-form" onSubmit={handleSubmit}>
         <div className="form-row">
           <label>Action</label>

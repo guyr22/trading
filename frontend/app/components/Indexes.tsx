@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createIndexTrade, fetchIndexPortfolio, fetchIndexTrades, type PortfolioSummary, type Trade } from "../api";
 import QuickTradeModal from "./QuickTradeModal";
+import { useAuth } from "../contexts/AuthContext";
 
 const INDEX_TICKERS = ["VOO", "SPY", "QQQ", "IBIT", "ETHA"];
 const fmt = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -12,6 +13,7 @@ const fmtPrice = (n: number) =>
 const pnlClass = (n: number) => (n >= 0 ? "positive" : "negative");
 
 export default function Indexes() {
+  const { user } = useAuth();
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [modal, setModal] = useState<{ action: "BUY" | "SELL"; ticker: string; price: number } | null>(null);
@@ -49,7 +51,7 @@ export default function Indexes() {
   return (
     <>
       <h2 style={{ marginBottom: "1rem" }}>Index Positions</h2>
-      <p style={{ marginBottom: "1rem" }}><Link href="/splits">Record an index fund split</Link></p>
+      <p style={{ marginBottom: "1rem" }}><Link href={user?.is_admin ? "/admin?tab=splits" : "/splits"}>Record an index fund split</Link></p>
       <div className="summary-cards" style={{ marginBottom: "2rem" }}>
         {INDEX_TICKERS.map(ticker => {
           const pos = portfolio.positions.find(p => p.ticker === ticker);

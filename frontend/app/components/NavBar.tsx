@@ -16,17 +16,18 @@ const NAV_ALL = [
 ];
 
 const NAV_ADMIN = [
-  ...NAV_ALL,
-  { href: "/leveraged-etfs", label: "Lev. ETFs" },
+  ...NAV_ALL.filter(item => item.href !== "/splits"),
+  { href: "/admin", label: "Admin" },
 ];
 
 export default function NavBar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
-  if (pathname === "/login" || pathname === "/register") return null;
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+
+  if (pathname === "/login" || pathname === "/register") return null;
 
   const handleInvite = async () => {
     setInviteLoading(true);

@@ -71,6 +71,12 @@ nav {
   border-color: var(--accent);
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
 /* ── Layout ────────────────────────────────────────────────────── */
 main {
   max-width: 960px;

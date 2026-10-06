@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, require_admin
 from core.logging import get_logger
 from dependencies import get_etf_repo
 from models import LeveragedEtf
@@ -16,7 +16,7 @@ def list_leveraged_etfs(etf_repo: EtfRepository = Depends(get_etf_repo)):
     return etf_repo.get_all_ordered()
 
 
-@router.post("/api/leveraged-etfs", response_model=LeveragedEtfResponse, status_code=201)
+@router.post("/api/leveraged-etfs", response_model=LeveragedEtfResponse, status_code=201, dependencies=[Depends(require_admin)])
 def create_leveraged_etf(
     etf_in: LeveragedEtfCreate,
     etf_repo: EtfRepository = Depends(get_etf_repo),
@@ -35,7 +35,7 @@ def create_leveraged_etf(
     return etf
 
 
-@router.delete("/api/leveraged-etfs/{ticker}", status_code=204)
+@router.delete("/api/leveraged-etfs/{ticker}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_leveraged_etf(
     ticker: str,
     etf_repo: EtfRepository = Depends(get_etf_repo),
